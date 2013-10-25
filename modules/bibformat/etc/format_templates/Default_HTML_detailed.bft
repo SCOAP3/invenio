@@ -18,12 +18,12 @@ suffix='</div><hr/>'/>
 </p>
 
 <p style="margin-left: 15%; width: 70%">
-
 <BFE_ABSTRACT
 prefix_en="<small><strong>Abstract: </strong>"
 prefix_fr="<small><strong>Résumé: </strong>"
 suffix_en="</small><br />"
 suffix_fr="</small><br />"
+escape="0"
 />
 
 <BFE_KEYWORDS
