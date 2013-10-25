@@ -64,7 +64,7 @@ def format_element(bfo, separator=" ", highlight='no'):
         if len(title) > 0:
             titles.append( title )
 
-    titles = [cgi.escape(x) for x in titles]
+    #titles = [cgi.escape(x) for x in titles]
 
     if highlight == 'yes':
         from invenio import bibformat_utils

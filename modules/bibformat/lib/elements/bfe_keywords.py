@@ -41,11 +41,12 @@ def format_element(bfo, keyword_prefix, keyword_suffix, separator=' ; ', link='y
             keywords = ['<a href="' + CFG_BASE_URL + '/search?f=keyword&amp;p='+ \
                         quote('"' + keyword + '"') + \
                         '&amp;ln='+ bfo.lang+ \
-                        '">' + cgi.escape(keyword) + '</a>'
+                        #'">' + cgi.escape(keyword) + '</a>'
+                        '">' + keyword + '</a>'
                         for keyword in keywords]
-        else:
-            keywords = [cgi.escape(keyword)
-                        for keyword in keywords]
+        #else:
+        #    keywords = [cgi.escape(keyword)
+        #                for keyword in keywords]
 
         keywords = [keyword_prefix + keyword + keyword_suffix
                     for keyword in keywords]
