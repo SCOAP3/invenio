@@ -86,5 +86,6 @@ CFG_BIBDOCFILE_FILEDIR = @localstatedir@/data/files
 
 ## helper style of variables for SCOAP3
 CFG_CONTRASTOUT_DOWNLOADDIR = @localstatedir@/data/scoap3/elsevier
+CFG_SPRINGER_DOWNLOADDIR = @localstatedir@/data/scoap3/springer
 
 ## - end of file -
