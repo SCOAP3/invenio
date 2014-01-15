@@ -20,11 +20,16 @@
 """
 __revision__ = "$Id$"
 
-def format_element(bfo, highlight="no", multilang='no'):
+import cgi
+from invenio.config import CFG_BASE_URL, CFG_SITE_RECORD
+
+def format_element(bfo, highlight="no", multilang='no', link="no"):
     """
     Prints a short title, suitable for brief format.
 
     @param highlight: highlights the words corresponding to search query if set to 'yes'
+
+    @param link: whether to link to the detailed record
     """
     if multilang == 'yes':
         if bfo.lang == 'fr':
@@ -57,6 +62,11 @@ def format_element(bfo, highlight="no", multilang='no'):
         out = bibformat_utils.highlight(out, bfo.search_pattern,
                                         prefix_tag="<span style='font-weight: bolder'>",
                                         suffix_tag='</style>')
+
+    if link == 'yes':
+        out = '<a href="%s" alt="Detailed record">%s</a>' % (
+                cgi.escape('%s/%s/%s' % (CFG_BASE_URL, CFG_SITE_RECORD, bfo.recID), True), out)
+
 
     return out
 
