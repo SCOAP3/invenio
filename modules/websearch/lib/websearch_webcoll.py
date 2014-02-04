@@ -228,7 +228,7 @@ class Collection:
                 i18name = _('Focus on:')
             elif box_type == "r":
                 if CFG_SCOAP3_SITE:
-                    i18name = _('Narrow by publisher/journal:')
+                    i18name = _('Narrow by journal or click on a journal name to browse all articles:')
                 else:
                     i18name = _('Narrow by collection:')
             elif box_type == "l":
@@ -657,7 +657,7 @@ class Collection:
                         fieldname = 'sc',
                         css_class = 'address',
                         values = [
-                                  {'value' : '1' , 'text' : CFG_SCOAP3_SITE and _("split by publisher/journal") or _("split by collection")},
+                                  {'value' : '1' , 'text' : CFG_SCOAP3_SITE and _("split by journal") or _("split by collection")},
                                   {'value' : '0' , 'text' : _("single list")}
                                  ]
                        )
