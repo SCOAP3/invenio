@@ -62,6 +62,7 @@ pylib_DATA = __init__.py \
 	bfe_imprint.py \
 	bfe_isbn.py \
 	bfe_issn.py \
+	bfe_license.py \
 	bfe_keywords.py \
 	bfe_language.py \
 	bfe_meta_files.py \
