@@ -255,6 +255,12 @@ except NameError:
     restricted_collection_cache = RestrictedCollectionDataCacher()
 
 
+def site_uses_restricted_collection_p():
+    """
+    Returns True if the site uses at least one restricted collection.
+    """
+    return bool(restricted_collection_cache.cache)
+
 def ziplist(*lists):
     """Just like zip(), but returns lists of lists instead of lists of tuples
 
@@ -3178,10 +3184,12 @@ def intersect_results_with_collrecs(req, hitset_in_any_collection, colls, of="hb
                     write_warning(_("No public collection matched your query. "
                                          "If you were looking for a hidden document, please type "
                                          "the correct URL for this record."), req=req)
-                else:
+                elif site_uses_restricted_collection_p():
                     write_warning(_("No public collection matched your query. "
                                          "If you were looking for a non-public document, please choose "
                                          "the desired restricted collection first."), req=req)
+                else:
+                    write_warning(_("No record matches your query."), req=req)
 
     if verbose and of.startswith("h"):
         t2 = os.times()[4]
