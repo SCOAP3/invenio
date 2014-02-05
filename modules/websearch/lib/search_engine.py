@@ -3557,6 +3557,21 @@ def guess_primary_collection_of_a_record(recID):
         if res:
             out = res[0][0]
             break
+    else:
+        ## OK, let's pick up the smallest collection that has a query defined.
+        ## and that contains this record.
+        smallest_collection_size = None
+        smallest_collection_name = None
+        for collection_name, query in run_sql("SELECT name, dbquery FROM collection"):
+            if query:
+                reclist = get_collection_reclist(collection_name)
+                if recID in reclist:
+                    collection_size = len(reclist)
+                    if smallest_collection_size is None or smallest_collection_size > collection_size:
+                        smallest_collection_size = collection_size
+                        smallest_collection_name = collection_name
+        if smallest_collection_name:
+            return smallest_collection_name
     if CFG_CERN_SITE:
         recID = int(recID)
         # dirty hack for ATLAS collections at CERN:
