@@ -221,7 +221,7 @@ def get_all_modified_dois(publisher, from_date=None, re_match=None, debug=False)
     """
     if from_date is None:
         from_date = (datetime.datetime.today() - datetime.timedelta(days=3)).strftime("%Y-%m-%d")
-    res = query_fundref_api("/publishers/%s/works" % publisher, rows=0, filter="from-update-date:%s" % from_date)
+    res = query_fundref_api("/prefixes/%s/works" % publisher, rows=0, filter="from-update-date:%s" % from_date)
     total_results = res['total-results']
     if debug:
         print >> sys.stderr, "total modified DOIs for publisher %s since %s: %s" % (publisher, from_date, total_results)
@@ -229,7 +229,7 @@ def get_all_modified_dois(publisher, from_date=None, re_match=None, debug=False)
     for offset in range(0, total_results, 1000):
         if debug:
             print >> sys.stderr, "Fetching %s/%s..." % (offset, total_results)
-        res = query_fundref_api("/publishers/%s/works" % publisher, rows=1000, offset=offset, filter="from-update-date:%s" % from_date)
+        res = query_fundref_api("/prefixes/%s/works" % publisher, rows=1000, offset=offset, filter="from-update-date:%s" % from_date)
         if re_match:
             ret.update([(item['DOI'], item) for item in res['items'] if re_match.match(item['DOI'])])
         else:
