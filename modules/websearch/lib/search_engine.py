@@ -51,42 +51,44 @@ if sys.hexversion < 0x2040000:
     # pylint: enable=W0622
 
 ## import Invenio stuff:
-from invenio.config import \
-     CFG_CERN_SITE, \
-     CFG_INSPIRE_SITE, \
-     CFG_SCOAP3_SITE, \
-     CFG_OAI_ID_FIELD, \
-     CFG_WEBCOMMENT_ALLOW_REVIEWS, \
-     CFG_WEBSEARCH_CALL_BIBFORMAT, \
-     CFG_WEBSEARCH_CREATE_SIMILARLY_NAMED_AUTHORS_LINK_BOX, \
-     CFG_WEBSEARCH_FIELDS_CONVERT, \
-     CFG_WEBSEARCH_NB_RECORDS_TO_SORT, \
-     CFG_WEBSEARCH_SEARCH_CACHE_SIZE, \
-     CFG_WEBSEARCH_USE_MATHJAX_FOR_FORMATS, \
-     CFG_WEBSEARCH_USE_ALEPH_SYSNOS, \
-     CFG_WEBSEARCH_DEF_RECORDS_IN_GROUPS, \
-     CFG_WEBSEARCH_FULLTEXT_SNIPPETS, \
-     CFG_WEBSEARCH_DISPLAY_NEAREST_TERMS, \
-     CFG_BIBUPLOAD_SERIALIZE_RECORD_STRUCTURE, \
-     CFG_BIBUPLOAD_EXTERNAL_SYSNO_TAG, \
-     CFG_BIBRANK_SHOW_DOWNLOAD_GRAPHS, \
-     CFG_WEBSEARCH_SYNONYM_KBRS, \
-     CFG_SITE_LANG, \
-     CFG_SITE_NAME, \
-     CFG_LOGDIR, \
-     CFG_BIBFORMAT_HIDDEN_TAGS, \
-     CFG_SITE_URL, \
-     CFG_ACCESS_CONTROL_LEVEL_ACCOUNTS, \
-     CFG_SOLR_URL, \
-     CFG_WEBSEARCH_DETAILED_META_FORMAT, \
-     CFG_SITE_RECORD, \
-     CFG_WEBSEARCH_PREV_NEXT_HIT_LIMIT, \
-     CFG_WEBSEARCH_VIEWRESTRCOLL_POLICY, \
-     CFG_BIBSORT_BUCKETS, \
-     CFG_BIBSORT_ENABLED, \
-     CFG_XAPIAN_ENABLED, \
-     CFG_BIBINDEX_CHARS_PUNCTUATION, \
-     CFG_BASE_URL
+from invenio.config import (CFG_CERN_SITE,
+                            CFG_INSPIRE_SITE,
+                            CFG_SCOAP3_SITE,
+                            CFG_OAI_ID_FIELD,
+                            CFG_WEBCOMMENT_ALLOW_REVIEWS,
+                            CFG_WEBSEARCH_CALL_BIBFORMAT,
+                            CFG_WEBSEARCH_CREATE_SIMILARLY_NAMED_AUTHORS_LINK_BOX,
+                            CFG_WEBSEARCH_FIELDS_CONVERT,
+                            CFG_WEBSEARCH_NB_RECORDS_TO_SORT,
+                            CFG_WEBSEARCH_SEARCH_CACHE_SIZE,
+                            CFG_WEBSEARCH_USE_MATHJAX_FOR_FORMATS,
+                            CFG_WEBSEARCH_USE_ALEPH_SYSNOS,
+                            CFG_WEBSEARCH_DEF_RECORDS_IN_GROUPS,
+                            CFG_WEBSEARCH_FULLTEXT_SNIPPETS,
+                            CFG_WEBSEARCH_DISPLAY_NEAREST_TERMS,
+                            CFG_BIBUPLOAD_SERIALIZE_RECORD_STRUCTURE,
+                            CFG_BIBUPLOAD_EXTERNAL_SYSNO_TAG,
+                            CFG_BIBRANK_SHOW_DOWNLOAD_GRAPHS,
+                            CFG_WEBSEARCH_SYNONYM_KBRS,
+                            CFG_SITE_LANG,
+                            CFG_SITE_NAME,
+                            CFG_LOGDIR,
+                            CFG_BIBFORMAT_HIDDEN_TAGS,
+                            CFG_SITE_URL,
+                            CFG_ACCESS_CONTROL_LEVEL_ACCOUNTS,
+                            CFG_SOLR_URL,
+                            CFG_WEBSEARCH_DETAILED_META_FORMAT,
+                            CFG_SITE_RECORD,
+                            CFG_WEBSEARCH_PREV_NEXT_HIT_LIMIT,
+                            CFG_WEBSEARCH_VIEWRESTRCOLL_POLICY,
+                            CFG_BIBSORT_BUCKETS,
+                            CFG_BIBSORT_ENABLED,
+                            CFG_XAPIAN_ENABLED,
+                            CFG_BIBINDEX_CHARS_PUNCTUATION,
+                            CFG_BASE_URL,
+                            CFG_SCOAP3_API_SERVER,
+                            CFG_SCOAP3_ONLY_MEMBERS_ACCESS)
+
 
 from invenio.search_engine_config import \
      InvenioWebSearchUnknownCollectionError, \
@@ -127,6 +129,7 @@ from invenio.errorlib import register_exception
 from invenio.textutils import encode_for_xml, wash_for_utf8, strip_accents
 from invenio.htmlutils import get_mathjax_header
 from invenio.htmlutils import nmtoken_from_string
+from invenio.urlutils import redirect_to_url
 from invenio import bibrecord
 
 import invenio.template
@@ -4522,7 +4525,7 @@ def print_records(req, recIDs, jrec=1, rg=CFG_WEBSEARCH_DEF_RECORDS_IN_GROUPS, f
         #req.write("%s:%d-%d" % (recIDs, irec_min, irec_max))
 
         if format.startswith('x'):
-
+            ## here we put code to check if the key was provided
             # print header if needed
             if print_records_prologue_p:
                 print_records_prologue(req, format)
@@ -5601,6 +5604,14 @@ def perform_request_search(req=None, cc=CFG_SITE_NAME, c=None, p="", f="", rg=No
           wl - wildcard limit (ex: 100) the wildcard queries will be
                limited at 100 results
     """
+    if CFG_SCOAP3_API_SERVER:
+        of = 'xm'
+    if CFG_SCOAP3_ONLY_MEMBERS_ACCESS:
+        if req:
+            uid = getUid(req)
+            if uid <= 0:
+                redirect_to_url(req, CFG_SITE_URL)
+
     kwargs = prs_wash_arguments(req=req, cc=cc, c=c, p=p, f=f, rg=rg, sf=sf, so=so, sp=sp, rm=rm, of=of, ot=ot, aas=aas,
                                 p1=p1, f1=f1, m1=m1, op1=op1, p2=p2, f2=f2, m2=m2, op2=op2, p3=p3, f3=f3, m3=m3, sc=sc, jrec=jrec,
                                 recid=recid, recidb=recidb, sysno=sysno, id=id, idb=idb, sysnb=sysnb, action=action, d1=d1,
