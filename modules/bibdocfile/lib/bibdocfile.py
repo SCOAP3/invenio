@@ -1,5 +1,5 @@
 ## This file is part of Invenio.
-## Copyright (C) 2007, 2008, 2009, 2010, 2011, 2012, 2013 CERN.
+## Copyright (C) 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014 CERN.
 ##
 ## Invenio is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
@@ -79,6 +79,8 @@ except ImportError:
 from datetime import datetime
 from mimetypes import MimeTypes
 from thread import get_ident
+from weakref import ref
+
 
 from invenio import webinterface_handler_config as apache
 
@@ -1741,18 +1743,22 @@ class BibDoc(object):
 
         # retreiving all available formats
         fprefix = container["storagename"] or "content"
-        if CFG_BIBDOCFILE_ENABLE_BIBDOCFSINFO_CACHE:
-            ## We take all extensions from the existing formats in the DB.
-            container["extensions"] = set([ext[0] for ext in run_sql("SELECT format FROM bibdocfsinfo WHERE id_bibdoc=%s", (docid, ))])
-        else:
-            ## We take all the extensions by listing the directory content, stripping name
-            ## and version.
-            container["extensions"] = set([fname[len(fprefix):].rsplit(";", 1)[0] for fname in filter(lambda x: x.startswith(fprefix), os.listdir(container["basedir"]))])
+        try:
+            if CFG_BIBDOCFILE_ENABLE_BIBDOCFSINFO_CACHE:
+                ## We take all extensions from the existing formats in the DB.
+                container["extensions"] = set([ext[0] for ext in run_sql("SELECT format FROM bibdocfsinfo WHERE id_bibdoc=%s", (docid, ))])
+            else:
+                ## We take all the extensions by listing the directory content, stripping name
+                ## and version.
+                container["extensions"] = set([fname[len(fprefix):].rsplit(";", 1)[0] for fname in filter(lambda x: x.startswith(fprefix), os.listdir(container["basedir"]))])
+        except OSError:
+            container["extensions"] = []
+            register_exception()
         return container
 
     @staticmethod
     def create_instance(docid=None, recid=None, docname=None,
-                        doctype='Fulltext', a_type = 'Main', human_readable=False):
+                        doctype='Fulltext', a_type = '', human_readable=False):
         """
         Parameters of an attachement to the record:
         a_type, recid, docname
@@ -1777,6 +1783,9 @@ class BibDoc(object):
         for dummy, plugin in get_plugins().iteritems():
             if plugin['supports'](doctype, extensions):
                 used_plugin = plugin
+
+        if not a_type:
+            a_type = doctype or 'Main'
 
         if not docid:
             rec_links = []
@@ -2235,16 +2244,26 @@ class BibDoc(object):
             Specifiy a different subformat if you need to use a different
             convention.
         @type subformat_re: compiled regular expression
-        @return: the bibdocfile corresponding to the icon of this document, or
-            None if any icon exists for this document.
+        @return: the bibdocfile corresponding to CFG_BIBDOCFILE_DEFAULT_ICON_SUBFORMAT
+            or, if this does not exist, the smallest size icon of this
+            document, or None if no icon exists for this document.
         @rtype: BibDocFile
         @warning: before I{subformat} were introduced this method was
             returning a BibDoc, while now is returning a BibDocFile. Check
             if your client code is compatible with this.
         """
+        icons = []
         for docfile in self.list_latest_files(list_hidden=display_hidden):
-            if subformat_re.match(docfile.get_subformat()):
+            subformat = docfile.get_subformat()
+            if subformat.lower() == CFG_BIBDOCFILE_DEFAULT_ICON_SUBFORMAT.lower():
+                # If it's the default icon subformat, return it
                 return docfile
+            if subformat_re.match(subformat):
+                icons.append((docfile.get_size(), docfile))
+        if icons:
+            # Sort by size, retrieve the smallest one
+            icons.sort()
+            return icons[0][1]
         return None
 
     def add_icon(self, filename, docformat=None, subformat=CFG_BIBDOCFILE_DEFAULT_ICON_SUBFORMAT, modification_date=None):
@@ -2293,15 +2312,18 @@ class BibDoc(object):
         @param newname: the new name.
         @type newname: string
         @raise InvenioBibDocFileError: if the new name corresponds to
-            a document already attached to the record owning this document.
+            a document already attached to the record owning this document or
+            if the name was not changed.
         """
         newname = normalize_docname(newname)
 
         res = run_sql("SELECT id_bibdoc FROM bibrec_bibdoc WHERE id_bibrec=%s AND docname=%s", (recid, newname))
         if res:
-            raise InvenioBibDocFileError, "A bibdoc called %s already exists for recid %s" % (newname, recid)
+            raise InvenioBibDocFileError("A bibdoc called %s already exists for recid %s" % (newname, recid))
 
-        run_sql("update bibrec_bibdoc set docname=%s where id_bibdoc=%s and id_bibrec=%s", (newname, self.id, recid))
+        updated = run_sql("update bibrec_bibdoc set docname=%s where id_bibdoc=%s and id_bibrec=%s", (newname, self.id, recid))
+        if not updated:
+            raise InvenioBibDocFileError("Docname for bibdoc %s in record %s was not changed" % (self.id, recid))
         # docid is known, the document already exists
         res2 = run_sql("SELECT id_bibrec, type, docname FROM bibrec_bibdoc WHERE id_bibdoc=%s", (self.id,))
         ## Refreshing names and types.
@@ -2904,7 +2926,9 @@ class BibDocFile(object):
     """This class represents a physical file in the Invenio filesystem.
     It should never be instantiated directly"""
 
-    def __init__(self, fullpath, recid_doctypes, version, docformat, docid, status, checksum, more_info=None, human_readable=False, cd=None, md=None, size=None, bibdoc = None):
+    def __init__(self, fullpath, recid_doctypes, version, docformat, docid,
+                 status, checksum, more_info=None, human_readable=False,
+                 cd=None, md=None, size=None, bibdoc=None):
         self.fullpath = os.path.abspath(fullpath)
 
         self.docid = docid
@@ -2916,7 +2940,10 @@ class BibDocFile(object):
         self.checksum = checksum
         self.human_readable = human_readable
         self.name = recid_doctypes[0][2]
-        self.bibdoc = bibdoc
+        if bibdoc is not None:
+            self.__bibdoc = ref(bibdoc)
+        else:
+            self.__bibdoc = None
 
         if more_info:
             self.description = more_info.get_description(docformat, version)
@@ -2954,6 +2981,17 @@ class BibDocFile(object):
         self.etag = '"%i%s%i"' % (self.docid, self.format, self.version)
         self.magic = None
 
+    @property
+    def bibdoc(self):
+        """
+        Wrapper around the referenced bibdoc necesseary to avoid memory leaks.
+        """
+        if self.__bibdoc is None or self.__bibdoc() is None:
+            bibdoc = BibDoc(self.docid)
+            self.__bibdoc = ref(bibdoc)
+            return bibdoc
+        return self.__bibdoc()
+
     def __repr__(self):
         return ('BibDocFile(%s,  %i, %s, %s, %i, %i, %s, %s, %s, %s)' % (repr(self.fullpath), self.version, repr(self.name), repr(self.format), self.recids_doctypes[0][0], self.docid, repr(self.status), repr(self.checksum), repr(self.more_info), repr(self.human_readable)))
 
@@ -2961,6 +2999,7 @@ class BibDocFile(object):
         if self.bibdoc:
             return self.bibdoc.format_recids()
         return "0"
+
     def __str__(self):
         recids = self.format_recids()
         out = '%s:%s:%s:%s:fullpath=%s\n' % (recids, self.docid, self.version, self.format, self.fullpath)
@@ -3624,26 +3663,20 @@ def decompose_bibdocfile_fullpath(fullpath):
     except:
         raise InvenioBibDocFileError, "Fullpath %s doesn't correspond to a valid bibdocfile fullpath" % fullpath
 
+_RE_BIBDOCFILE_URL = re.compile("(%s|%s)/%s/(?P<recid>\d+)(?P<rest>.*)" % (re.escape(CFG_SITE_URL), re.escape(CFG_SITE_SECURE_URL), re.escape(CFG_SITE_RECORD)))
 def decompose_bibdocfile_url(url):
     """Given a bibdocfile_url return a triple (recid, docname, format)."""
     if url.startswith('%s/getfile.py' % CFG_SITE_URL) or url.startswith('%s/getfile.py' % CFG_SITE_SECURE_URL):
         return decompose_bibdocfile_very_old_url(url)
 
-    if url.startswith('%s/%s/' % (CFG_SITE_URL, CFG_SITE_RECORD)):
-        recid_file = url[len('%s/%s/' % (CFG_SITE_URL, CFG_SITE_RECORD)):]
-    elif url.startswith('%s/%s/' % (CFG_SITE_SECURE_URL, CFG_SITE_RECORD)):
-        recid_file = url[len('%s/%s/' % (CFG_SITE_SECURE_URL, CFG_SITE_RECORD)):]
+    g = _RE_BIBDOCFILE_URL.match(urllib.unquote(url))
+    if g:
+        recid = int(g.group('recid'))
+        rest = g.group('rest')
+        dummy, docname, docformat = decompose_file(rest)
+        return recid, docname, docformat
     else:
         raise InvenioBibDocFileError, "Url %s doesn't correspond to a valid record inside the system." % url
-    recid_file = recid_file.replace('/files/', '/')
-
-    recid, docname, docformat = decompose_file(urllib.unquote(recid_file)) # this will work in the case of URL... not file !
-    if not recid and docname.isdigit():
-        ## If the URL was something similar to CFG_SITE_URL/CFG_SITE_RECORD/123
-        return (int(docname), '', '')
-
-    return (int(recid), docname, docformat)
-
 
 re_bibdocfile_old_url = re.compile(r'/%s/(\d*)/files/' % CFG_SITE_RECORD)
 def decompose_bibdocfile_old_url(url):

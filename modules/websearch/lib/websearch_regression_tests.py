@@ -250,11 +250,14 @@ class WebSearchTestLegacyURLs(InvenioTestCase):
 
         # Drop unnecessary arguments, like ln and as (when they are
         # the default value)
-        args = {'as': 0}
+        from invenio.config import CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE
+        from invenio.search_engine_config import CFG_WEBSEARCH_ENABLED_SEARCH_INTERFACES
+        args = {'as': CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE}
         check(make_url('/', c='Poetry', **args),
               make_url('/collection/Poetry', ln=CFG_SITE_LANG))
 
         # Otherwise, keep them
+        as_arg = [as_arg for as_arg in CFG_WEBSEARCH_ENABLED_SEARCH_INTERFACES if as_arg != CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE][0]
         args = {'as': 1, 'ln': CFG_SITE_LANG}
         check(make_url('/', c='Poetry', **args),
               make_url('/collection/Poetry', **args))
@@ -409,14 +412,17 @@ class WebSearchTestCollections(InvenioTestCase):
 
         browser = Browser()
 
+        from invenio.config import CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE
+        from invenio.search_engine_config import \
+            CFG_WEBSEARCH_ENABLED_SEARCH_INTERFACES
         try:
-            for aas in (0, 1):
+            for aas in CFG_WEBSEARCH_ENABLED_SEARCH_INTERFACES:
                 args = {'as': aas}
                 browser.open(make_url('/collection/Preprints', **args))
 
                 for jrec in (11, 21, 11, 27):
                     args = {'jrec': jrec, 'cc': 'Preprints'}
-                    if aas:
+                    if aas != CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE:
                         args['as'] = aas
 
                     url = make_rurl('/search', **args)
@@ -564,7 +570,8 @@ class WebSearchTestBrowse(InvenioTestCase):
         """ websearch - check that browsing works """
 
         browser = Browser()
-        browser.open(make_url('/', ln="en"))
+        args = {'as': 0, 'ln': 'en'}
+        browser.open(make_url('/', **args))
 
         browser.select_form(name='search')
         browser['f'] = ['title']
@@ -718,9 +725,10 @@ class WebSearchTestSearch(InvenioTestCase):
         """ websearch - check extension of a query to the home collection """
 
         browser = Browser()
+        args = {'ln':'en', 'as': 0}
 
         # We do a precise search in an isolated collection
-        browser.open(make_url('/collection/ISOLDE', ln='en'))
+        browser.open(make_url('/collection/ISOLDE', **args))
 
         browser.select_form(name='search')
         browser['f'] = ['author']
@@ -744,7 +752,8 @@ class WebSearchTestSearch(InvenioTestCase):
         """ websearch - provide a list of nearest terms """
 
         browser = Browser()
-        browser.open(make_url(''))
+        args = {'as': 0}
+        browser.open(make_url('', **args))
 
         # Search something weird
         browser.select_form(name='search')
@@ -801,32 +810,12 @@ class WebSearchTestSearch(InvenioTestCase):
                                  'f': ['title'],
                                  'ln': ['en']})
 
-    def test_switch_to_advanced_search(self):
-        """ websearch - switch to advanced search """
-
-        browser = Browser()
-        browser.open(make_url('/collection/ISOLDE'))
-
-        browser.select_form(name='search')
-        browser['p'] = 'tandem'
-        browser['f'] = ['title']
-        browser.submit()
-
-        browser.follow_link(text='Advanced Search')
-
-        dummy, q = parse_url(browser.geturl())
-
-        self.failUnlessEqual(q, {'cc': ['ISOLDE'],
-                                 'p1': ['tandem'],
-                                 'f1': ['title'],
-                                 'as': ['1'],
-                                 'ln' : ['en']})
-
     def test_no_boolean_hits(self):
         """ websearch - check the 'no boolean hits' proposed links """
 
         browser = Browser()
-        browser.open(make_url(''))
+        args = {'as': 0}
+        browser.open(make_url('', **args))
 
         browser.select_form(name='search')
         browser['p'] = 'quasinormal muon'
@@ -849,7 +838,8 @@ class WebSearchTestSearch(InvenioTestCase):
         """ websearch - test similar authors box """
 
         browser = Browser()
-        browser.open(make_url(''))
+        args = {'as': 0}
+        browser.open(make_url('', **args))
 
         browser.select_form(name='search')
         browser['p'] = 'Ellis, R K'
@@ -922,7 +912,6 @@ class WebSearchCJKTokenizedSearchTest(InvenioTestCase):
             run_sql(query)
             self.reindexed = True
             wordTable = WordTable(index_name=self.index_name,
-                                  fields_to_index=get_index_tags(self.index_name),
                                   table_type = CFG_BIBINDEX_INDEX_TABLE_TYPE["Words"])
             wordTable.turn_off_virtual_indexes()
             wordTable.add_recIDs([[104, 104]], 10000)
@@ -936,12 +925,9 @@ class WebSearchCJKTokenizedSearchTest(InvenioTestCase):
                        WHERE name='%s'""" % (self.last_updated, self.index_name)
             run_sql(query)
             wordTable = WordTable(index_name=self.index_name,
-                                  fields_to_index=get_index_tags(self.index_name),
                                   table_type = CFG_BIBINDEX_INDEX_TABLE_TYPE["Words"])
             wordTable.turn_off_virtual_indexes()
             wordTable.add_recIDs([[104, 104]], 10000)
-
-
 
     def test_title_cjk_tokenized_two_characters(self):
         """CJKTokenizer - test for finding chinese poetry with two CJK characters"""
@@ -3938,6 +3924,21 @@ class WebSearchResultsOverview(InvenioTestCase):
             self.fail("Oops, when split by collection is on, "
                       "a link to Multimedia & Arts should be found.")
 
+class WebSearchResultsNumberingTest(InvenioTestCase):
+    """Test the numbering of the search results."""
+
+    def test_results_numbering(self):
+        """websearch - results number after the 1st page"""
+        rg = 10
+        jrec = 11
+        browser = Browser()
+        browser.open("%s/search?rg=%i&jrec=%i" % (CFG_SITE_URL, rg, jrec))
+        body = browser.response().read()
+        self.assertEqual(
+            range(jrec, jrec+rg),
+            map(int, re.findall(r"</abbr>\s*(\d+)\.\s*</td>", body, re.I+re.M))
+        )
+
 class WebSearchSortResultsTest(InvenioTestCase):
     """Test of the search results page's sorting capability."""
 
@@ -4979,7 +4980,6 @@ class WebSearchCustomCollectionBoxesName(InvenioTestCase):
                          test_web_page_content(CFG_SITE_URL + '/collection/CERN%20Divisions?ln=af',
                                                expected_text='Browse by division:'))
 
-
 class WebSearchDetailedRecordTabsTest(InvenioTestCase):
     def test_detailed_record(self):
         """websearch - check detailed record main tab"""
@@ -5049,6 +5049,39 @@ class WebSearchDetailedRecordTabsTest(InvenioTestCase):
                                                    expected_text='Linkbacks',
                                                    unexpected_text='The server encountered an error'))
 
+class WebSearchResolveDOITest(InvenioTestCase):
+    """Checks that we can resolve DOIs """
+
+    def test_resolve_existing_doi(self):
+        """websearch - check resolution of a DOI for an existing record"""
+        error_messages = []
+        error_messages.extend(test_web_page_content(CFG_SITE_URL + "/doi/10.4028/www.scientific.net/MSF.638-642.1098",
+                                                    expected_text = ['Influence of processing parameters on the manufacturing of anode-supported solid oxide fuel cells by different wet chemical routes'],
+                                                    unexpected_text = ['404 Not Found', 'could not be resolved']))
+
+        error_messages.extend(test_web_page_content(CFG_SITE_URL + "/doi/10.1063/1.2737136",
+                                                    expected_text = ['Epitaxially stabilized growth of orthorhombic LuScO3 thin films'],
+                                                    unexpected_text = ['404 Not Found', 'could not be resolved']))
+        if error_messages:
+            self.fail(merge_error_messages(error_messages))
+
+    def test_resolve_non_existing_doi(self):
+        """websearch - check resolution of a non-existing DOI"""
+        error_messages = []
+        error_messages.extend(test_web_page_content(CFG_SITE_URL + "/doi/foobar",
+                                                    expected_text = ['could not be resolved', 'foobar'],
+                                                    unexpected_text = ['404 Not Found']))
+        if error_messages:
+            self.fail(merge_error_messages(error_messages))
+
+    def test_resolve_non_doi(self):
+        """websearch - check resolution of a non-DOI value living in 0247_a (without 0247__2:DOI)"""
+        error_messages = []
+        error_messages.extend(test_web_page_content(CFG_SITE_URL + "/doi/0255-5476",
+                                                    expected_text = ['could not be resolved', '0255-5476'],
+                                                    unexpected_text = ['404 Not Found']))
+        if error_messages:
+            self.fail(merge_error_messages(error_messages))
 
 TEST_SUITE = make_test_suite(WebSearchWebPagesAvailabilityTest,
                              WebSearchTestSearch,
@@ -5103,8 +5136,8 @@ TEST_SUITE = make_test_suite(WebSearchWebPagesAvailabilityTest,
                              WebSearchCJKTokenizedSearchTest,
                              WebSearchItemCountQueryTest,
                              WebSearchCustomCollectionBoxesName,
-                             WebSearchDetailedRecordTabsTest,)
-
+                             WebSearchDetailedRecordTabsTest,
+                             WebSearchResolveDOITest)
 
 if __name__ == "__main__":
     run_test_suite(TEST_SUITE, warn_user=True)

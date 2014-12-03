@@ -105,7 +105,8 @@ from invenio.bibrank_downloads_similarity import register_page_view_event, calcu
 from invenio.bibindex_engine_stemmer import stem
 from invenio.bibindex_tokenizers.BibIndexDefaultTokenizer import BibIndexDefaultTokenizer
 from invenio.bibindex_tokenizers.BibIndexCJKTokenizer import BibIndexCJKTokenizer, is_there_any_CJK_character_in_text
-from invenio.bibindex_engine_utils import author_name_requires_phrase_search
+from invenio.bibindex_engine_utils import author_name_requires_phrase_search, \
+    get_field_tags
 from invenio.bibindex_engine_washer import wash_index_term, lower_index_term, wash_author_name
 from invenio.bibindex_engine_config import CFG_BIBINDEX_SYNONYM_MATCH_TYPE
 from invenio.bibindex_engine_utils import get_idx_indexer
@@ -326,6 +327,10 @@ def is_user_owner_of_record(user_info, recid):
         email = email_or_group.strip().lower()
         if user_info['email'].strip().lower() == email:
             return True
+        if CFG_CERN_SITE:
+            #the egroup might be in the form egroup@cern.ch
+            if email_or_group.replace('@cern.ch', ' [CERN]') in user_info['group']:
+                return True
     return False
 
 ###FIXME: This method needs to be refactorized
@@ -526,11 +531,10 @@ def get_collection_reclist(coll, recreate_cache_if_needed=True):
         reclist = intbitset()
         query = "SELECT nbrecs,reclist FROM collection WHERE name=%s"
         res = run_sql(query, (coll, ), 1)
-        if res:
-            try:
-                reclist = intbitset(res[0][1])
-            except IndexError:
-                pass
+        try:
+            reclist = intbitset(res[0][1])
+        except (IndexError, TypeError):
+            pass
         collection_reclist_cache.cache[coll] = reclist
     # finally, return reclist:
     return collection_reclist_cache.cache[coll]
@@ -1075,6 +1079,52 @@ def page_end(req, of="hb", ln=CFG_SITE_LANG, em=""):
         if em == "" or EM_REPOSITORY["footer"] in em:
             req.write(pagefooteronly(lastupdated=__lastupdated__, language=ln, req=req))
     return
+
+def create_add_to_search_pattern(p, p1, f1, m1, op1):
+    """Create the search pattern """
+    if not p1:
+        return p
+    init_search_pattern = p
+    # operation: AND, OR, AND NOT
+    if op1 == 'a' and p: # we don't want '+' at the begining of the query
+        op =  ' +'
+    elif op1 == 'o':
+        op = ' |'
+    elif op1 == 'n':
+        op = ' -'
+    else:
+        op = ''
+
+    # field
+    field = ''
+    if f1:
+        field = f1 + ':'
+
+    # type of search
+    pattern = p1
+    start = '('
+    end = ')'
+    if m1 == 'e':
+        start = end = '"'
+    elif m1 == 'p':
+        start = end = "'"
+    elif m1 == 'r':
+        start = end = '/'
+    else: # m1 == 'o' or m1 =='a'
+        words = p1.strip().split(' ')
+        if len(words) == 1:
+            start = end = ''
+            pattern = field + words[0]
+        elif m1 == 'o':
+            pattern = ' |'.join([field + word for word in words])
+        else:
+            pattern = ' '.join([field + word for word in words])
+        #avoid having field:(word1 word2) since this is not currently correctly working
+        return init_search_pattern + op + start + pattern + end
+    if not pattern:
+        return ''
+    #avoid having field:(word1 word2) since this is not currently correctly working
+    return init_search_pattern + op + field + start + pattern + end
 
 def create_page_title_search_pattern_info(p, p1, p2, p3):
     """Create the search pattern bit for the page <title> web page
@@ -1781,7 +1831,7 @@ def is_hosted_collection(coll):
     Returns True if it is, False if it's not or if the result is empty or if the query failed"""
 
     res = run_sql("SELECT dbquery FROM collection WHERE name=%s", (coll, ))
-    if not res[0][0]:
+    if not res or not res[0][0]:
         return False
     try:
         return res[0][0].startswith("hostedcollection:")
@@ -1828,15 +1878,23 @@ def get_coll_ancestors(coll):
 
 def get_coll_sons(coll, coll_type='r', public_only=1):
     """Return a list of sons (first-level descendants) of type 'coll_type' for collection 'coll'.
+       If coll_type = '*', both regular and virtual collections will be returned.
        If public_only, then return only non-restricted son collections.
     """
     coll_sons = []
+    if coll_type == '*':
+        coll_type_query = " IN ('r', 'v')"
+        query_params = (coll, )
+    else:
+        coll_type_query = "=%s"
+        query_params = (coll_type, coll)
+
     query = "SELECT c.name FROM collection AS c "\
             "LEFT JOIN collection_collection AS cc ON c.id=cc.id_son "\
             "LEFT JOIN collection AS ccc ON ccc.id=cc.id_dad "\
-            "WHERE cc.type=%s AND ccc.name=%s"
+            "WHERE cc.type%s AND ccc.name=%%s" % coll_type_query
     query += " ORDER BY cc.score DESC"
-    res = run_sql(query, (coll_type, coll))
+    res = run_sql(query, query_params)
     for name in res:
         if not public_only or not collection_restricted_p(name[0]):
             coll_sons.append(name[0])
@@ -1848,25 +1906,33 @@ class CollectionAllChildrenDataCacher(DataCacher):
 
         def cache_filler():
 
-            def get_all_children(coll, coll_type='r', public_only=1):
-                """Return a list of all children of type 'type' for collection 'coll'.
+            def get_all_children(coll, coll_type='r', public_only=1, d_internal_coll_sons=None):
+                """Return a list of all children of type 'coll_type' for collection 'coll'.
                    If public_only, then return only non-restricted child collections.
-                   If type='*', then return both regular and virtual collections.
+                   If coll_type='*', then return both regular and virtual collections.
+                   d_internal_coll_sons is an internal dictionary used in recursion for
+                   minimizing the number of database calls and should not be used outside
+                   this scope.
                 """
+                if not d_internal_coll_sons:
+                    d_internal_coll_sons = {}
+
                 children = []
-                if coll_type == '*':
-                    sons = get_coll_sons(coll, 'r', public_only) + get_coll_sons(coll, 'v', public_only)
-                else:
-                    sons = get_coll_sons(coll, coll_type, public_only)
-                for child in sons:
+
+                if coll not in d_internal_coll_sons:
+                    d_internal_coll_sons[coll] = get_coll_sons(coll, coll_type, public_only)
+
+                for child in d_internal_coll_sons[coll]:
                     children.append(child)
-                    children.extend(get_all_children(child, coll_type, public_only))
-                return children
+                    children.extend(get_all_children(child, coll_type, public_only, d_internal_coll_sons)[0])
+
+                return children, d_internal_coll_sons
 
             ret = {}
+            d_internal_coll_sons = None
             collections = collection_reclist_cache.cache.keys()
             for collection in collections:
-                ret[collection] = get_all_children(collection, '*', public_only=0)
+                ret[collection], d_internal_coll_sons = get_all_children(collection, '*', public_only=0, d_internal_coll_sons=d_internal_coll_sons)
             return ret
 
         def timestamp_verifier():
@@ -2326,13 +2392,13 @@ def search_unit(p, f=None, m=None, wl=0, ignore_synonyms=None):
 
     ## eventually look up runtime synonyms:
     hitset_synonyms = intbitset()
-    if f in CFG_WEBSEARCH_SYNONYM_KBRS:
+    if CFG_WEBSEARCH_SYNONYM_KBRS.has_key(f or 'anyfield'):
         if ignore_synonyms is None:
             ignore_synonyms = []
         ignore_synonyms.append(p)
         for p_synonym in get_synonym_terms(p,
-                             CFG_WEBSEARCH_SYNONYM_KBRS[f][0],
-                             CFG_WEBSEARCH_SYNONYM_KBRS[f][1]):
+                             CFG_WEBSEARCH_SYNONYM_KBRS[f or 'anyfield'][0],
+                             CFG_WEBSEARCH_SYNONYM_KBRS[f or 'anyfield'][1]):
             if p_synonym != p and \
                    not p_synonym in ignore_synonyms:
                 hitset_synonyms |= search_unit(p_synonym, f, m, wl,
@@ -3673,18 +3739,6 @@ def get_field_name(code):
     else:
         return ""
 
-def get_field_tags(field):
-    """Returns a list of MARC tags for the field code 'field'.
-       Returns empty list in case of error.
-       Example: field='author', output=['100__%','700__%']."""
-    out = []
-    query = """SELECT t.value FROM tag AS t, field_tag AS ft, field AS f
-                WHERE f.code=%s AND ft.id_field=f.id AND t.id=ft.id_tag
-                ORDER BY ft.score DESC"""
-    res = run_sql(query, (field, ))
-    for val in res:
-        out.append(val[0])
-    return out
 
 def get_fieldvalues_alephseq_like(recID, tags_in, can_see_hidden=False):
     """Return buffer of ALEPH sequential-like textual format with fields found
@@ -4404,7 +4458,7 @@ def print_records(req, recIDs, jrec=1, rg=CFG_WEBSEARCH_DEF_RECORDS_IN_GROUPS, f
                   relevances=[], relevances_prologue="(", relevances_epilogue="%%)",
                   decompress=zlib.decompress, search_pattern='', print_records_prologue_p=True,
                   print_records_epilogue_p=True, verbose=0, tab='', sf='', so='d', sp='',
-                  rm='', em=''):
+                  rm='', em='', nb_found=-1):
 
     """
     Prints list of records 'recIDs' formatted according to 'format' in
@@ -4443,8 +4497,10 @@ def print_records(req, recIDs, jrec=1, rg=CFG_WEBSEARCH_DEF_RECORDS_IN_GROUPS, f
     else:
         user_info = collect_user_info(req)
 
-    if len(recIDs):
+    if nb_found == -1:
         nb_found = len(recIDs)
+
+    if nb_found:
 
         if not rg or rg == -9999: # print all records
             rg = nb_found
@@ -4586,6 +4642,7 @@ def print_records(req, recIDs, jrec=1, rg=CFG_WEBSEARCH_DEF_RECORDS_IN_GROUPS, f
 
             elif format.startswith("hd"):
                 # HTML detailed format:
+                referer = user_info.get('referer', '')
                 for recid in recIDs:
                     if record_exists(recid) == -1:
                         write_warning(_("The record has been deleted."), req=req)
@@ -4593,7 +4650,7 @@ def print_records(req, recIDs, jrec=1, rg=CFG_WEBSEARCH_DEF_RECORDS_IN_GROUPS, f
                         if merged_recid:
                             write_warning(_("The record %d replaces it." % merged_recid), req=req)
                         continue
-                    unordered_tabs = get_detailed_page_tabs(get_colID(guess_primary_collection_of_a_record(recid)),
+                    unordered_tabs = get_detailed_page_tabs(get_colID(guess_collection_of_a_record(recid, referer, False)),
                                                             recid, ln=ln)
                     ordered_tabs_id = [(tab_id, values['order']) for (tab_id, values) in unordered_tabs.iteritems()]
                     ordered_tabs_id.sort(lambda x, y: cmp(x[1], y[1]))
@@ -5657,8 +5714,8 @@ def prs_wash_arguments(req=None, cc=CFG_SITE_NAME, c=None, p="", f="", rg=CFG_WE
         recidb = idb
     # TODO deduce passed search limiting criterias (if applicable)
     pl, pl_in_url = "", "" # no limits by default
-    if action != "browse" and req and not isinstance(req, cStringIO.OutputType) \
-           and req.args: # we do not want to add options while browsing or while calling via command-line
+    if action != "browse" and req and not isinstance(req, (cStringIO.OutputType, dict)) \
+           and getattr(req, 'args', None): # we do not want to add options while browsing or while calling via command-line
         fieldargs = cgi.parse_qs(req.args)
         for fieldcode in get_fieldcodes():
             if fieldcode in fieldargs:
@@ -5684,6 +5741,13 @@ def prs_wash_arguments(req=None, cc=CFG_SITE_NAME, c=None, p="", f="", rg=CFG_WE
             uid = 0
 
     _ = gettext_set_language(ln)
+
+    if aas == 2: #add-to-search interface
+        p = create_add_to_search_pattern(p, p1, f1, m1, op1)
+        default_addtosearch_args = websearch_templates.restore_search_args_to_default(['p1', 'f1', 'm1', 'op1'])
+        if req:
+            req.argd.update(default_addtosearch_args)
+            req.argd['p'] = p
 
     kwargs = {'req': req, 'cc': cc, 'c': c, 'p': p, 'f': f, 'rg': rg, 'sf': sf,
               'so': so, 'sp': sp, 'rm': rm, 'of': of, 'ot': ot, 'aas': aas,
@@ -5776,8 +5840,9 @@ def prs_detailed_record(kwargs=None, req=None, of=None, cc=None, aas=None, ln=No
             else:
                 return result
         else:
-            print_records(req, range(recid, recidb), -1, -9999, of, ot, ln, search_pattern=p, verbose=verbose,
-                          tab=tab, sf=sf, so=so, sp=sp, rm=rm, em=em)
+            print_records(req, range(recid, recidb), -1, -9999, of, ot, ln,
+                          search_pattern=p, verbose=verbose, tab=tab, sf=sf,
+                          so=so, sp=sp, rm=rm, em=em, nb_found=len(range(recid, recidb)))
         if req and of.startswith("h"): # register detailed record page view event
             client_ip_address = str(req.remote_ip)
             register_page_view_event(recid, uid, client_ip_address)
@@ -5895,18 +5960,24 @@ def prs_search_similar_records(kwargs=None, req=None, of=None, cc=None, pl_in_ur
                                             d1y, d1m, d1d, d2y, d2m, d2d, dt, cpu_time, em=em))
                 write_warning(results_similar_comments, req=req)
                 print_records(req, results_similar_recIDs, jrec, rg, of, ot, ln,
-                              results_similar_relevances, results_similar_relevances_prologue,
+                              results_similar_relevances,
+                              results_similar_relevances_prologue,
                               results_similar_relevances_epilogue,
-                              search_pattern=p, verbose=verbose, sf=sf, so=so, sp=sp, rm=rm, em=em)
+                              search_pattern=p, verbose=verbose, sf=sf, so=so,
+                              sp=sp, rm=rm, em=em,
+                              nb_found=len(results_similar_recIDs))
             elif of == "id":
                 return results_similar_recIDs
             elif of == "intbitset":
                 return intbitset(results_similar_recIDs)
             elif of.startswith("x"):
                 print_records(req, results_similar_recIDs, jrec, rg, of, ot, ln,
-                              results_similar_relevances, results_similar_relevances_prologue,
-                              results_similar_relevances_epilogue, search_pattern=p, verbose=verbose,
-                              sf=sf, so=so, sp=sp, rm=rm, em=em)
+                              results_similar_relevances,
+                              results_similar_relevances_prologue,
+                              results_similar_relevances_epilogue,
+                              search_pattern=p, verbose=verbose, sf=sf, so=so,
+                              sp=sp, rm=rm, em=em,
+                              nb_found=len(results_similar_recIDs))
             else:
                 # rank_records failed and returned some error message to display:
                 if of.startswith("h"):
@@ -5966,15 +6037,19 @@ def prs_search_cocitedwith(kwargs=None, req=None, of=None, cc=None, pl_in_url=No
                                             jrec, rg, aas, ln, p1, p2, p3, f1, f2, f3, m1, m2, m3, op1, op2,
                                             sc, pl_in_url,
                                             d1y, d1m, d1d, d2y, d2m, d2d, dt, cpu_time, em=em))
-                print_records(req, results_cocited_recIDs, jrec, rg, of, ot, ln, search_pattern=p, verbose=verbose,
-                              sf=sf, so=so, sp=sp, rm=rm, em=em)
+                print_records(req, results_cocited_recIDs, jrec, rg, of, ot, ln,
+                              search_pattern=p, verbose=verbose, sf=sf, so=so,
+                              sp=sp, rm=rm, em=em,
+                              nb_found=len(results_cocited_recIDs))
             elif of == "id":
                 return results_cocited_recIDs
             elif of == "intbitset":
                 return intbitset(results_cocited_recIDs)
             elif of.startswith("x"):
-                print_records(req, results_cocited_recIDs, jrec, rg, of, ot, ln, search_pattern=p, verbose=verbose,
-                              sf=sf, so=so, sp=sp, rm=rm, em=em)
+                print_records(req, results_cocited_recIDs, jrec, rg, of, ot, ln,
+                              search_pattern=p, verbose=verbose, sf=sf, so=so,
+                              sp=sp, rm=rm, em=em,
+                              nb_found=len(results_cocited_recIDs))
             else:
                 # cited rank_records failed and returned some error message to display:
                 if of.startswith("h"):
@@ -6359,6 +6434,7 @@ def prs_print_records(kwargs=None, results_final=None, req=None, of=None, cc=Non
                                             sc, pl_in_url,
                                             d1y, d1m, d1d, d2y, d2m, d2d, dt, cpu_time, em=em))
             results_final_recIDs = list(results_final[coll])
+            results_final_nb_found = len(results_final_recIDs)
             results_final_relevances = []
             results_final_relevances_prologue = ""
             results_final_relevances_epilogue = ""
@@ -6396,7 +6472,8 @@ def prs_print_records(kwargs=None, results_final=None, req=None, of=None, cc=Non
                           so=so,
                           sp=sp,
                           rm=rm,
-                          em=em)
+                          em=em,
+                          nb_found=results_final_nb_found)
 
             if of.startswith("h"):
                 req.write(print_search_info(p, f, sf, so, sp, rm, of, ot, coll, results_final_nb[coll],
@@ -6582,14 +6659,20 @@ def prs_search_common(kwargs=None, req=None, of=None, cc=None, ln=None, uid=None
 
     t1 = os.times()[4]
     results_in_any_collection = intbitset()
-    if aas == 1 or (p1 or p2 or p3):
-        ## 3A - advanced search
+    if aas == 2 and not (p2 or p3):
+        ## 3A add-to-search
+        output = prs_simple_search(results_in_any_collection, kwargs=kwargs, **kwargs)
+        if output is not None:
+            return output
+
+    elif aas == 1 or (p1 or p2 or p3):
+        ## 3B - advanced search
         output = prs_advanced_search(results_in_any_collection, kwargs=kwargs, **kwargs)
         if output is not None:
             return output
 
     else:
-        ## 3B - simple search
+        ## 3C - simple search
         output = prs_simple_search(results_in_any_collection, kwargs=kwargs, **kwargs)
         if output is not None:
             return output

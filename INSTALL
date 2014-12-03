@@ -5,7 +5,7 @@ About
 =====
 
 This document specifies how to build, customize, and install Invenio
-v1.1.3 for the first time.  See RELEASE-NOTES if you are upgrading
+v1.1.4 for the first time.  See RELEASE-NOTES if you are upgrading
 from a previous Invenio release.
 
 Contents
@@ -34,7 +34,7 @@ Contents
           $ sudo aptitude install python-dev apache2-mpm-prefork \
               mysql-server mysql-client python-mysqldb \
               python-4suite-xml python-simplejson python-xml \
-              python-libxml2 python-libxslt1 gnuplot poppler-utils \
+              gnuplot poppler-utils \
               gs-common clisp gettext libapache2-mod-wsgi unzip \
               python-dateutil python-rdflib python-pyparsing \
               python-gnuplot python-magic pdftk html2text giflib-tools \
@@ -47,7 +47,7 @@ Contents
           $ sudo aptitude install sbcl cmucl pylint pychecker pyflakes \
               python-profiler python-epydoc libapache2-mod-xsendfile \
               openoffice.org python-utidylib python-beautifulsoup \
-              python-unidecode libhdf5-dev
+              libhdf5-dev
 
         (Note that if you use pip to manage your Python dependencies
         instead of operating system packages, please see the section
@@ -107,6 +107,8 @@ Contents
              <http://sourceforge.net/projects/mysql-python>
           - (mandatory) Pyparsing, for document parsing
              <http://pyparsing.wikispaces.com/>
+          - (mandatory) unidecode, for ASCII representation of Unicode text:
+             <https://pypi.python.org/pypi/Unidecode>
           - (recommended) Redis connector:
              <https://pypi.python.org/pypi/redis/>
           - (recommended) Nydus, Redis consistent hashing connector:
@@ -119,8 +121,6 @@ Contents
              <http://www.reportlab.org/pyrxp.html>
           - (recommended) lxml, for XML/XLST processing:
              <http://lxml.de/>
-          - (recommended) libxml2-python, for XML/XLST processing:
-             <ftp://xmlsoft.org/libxml2/python/>
           - (recommended) Gnuplot.Py, for producing graphs:
              <http://gnuplot-py.sourceforge.net/>
           - (recommended) Snowball Stemmer, for stemming:
@@ -133,6 +133,8 @@ Contents
              <http://www.darwinsys.com/file/>
           - (recommended) cerberus, extensible validation for Python dictionaries.
              <http://cerberus.readthedocs.org/>
+          - (optional) libxml2-python, for XML/XLST processing:
+             <ftp://xmlsoft.org/libxml2/python/>
           - (optional) chardet, for character encoding detection:
              <http://chardet.feedparser.org/>
           - (optional) 4suite, slower alternative to PyRXP and
@@ -159,9 +161,6 @@ Contents
           - (optional) Python Rauth if you want to enable OAuth 1.0/2.0
              support for authentication (depends on Python-2.6 or later):
              <http://packages.python.org/rauth/>
-          - (optional) unidecode, for ASCII representation of Unicode
-             text:
-             <https://pypi.python.org/pypi/Unidecode>
           - (optional) libhdf5-7, libhdf5-dev, python-h5py, in order to
              run author disambiguation.
              <https://code.google.com/p/h5py/>
@@ -304,13 +303,13 @@ Contents
 ----------------
 
       $ cd $HOME/src/
-      $ wget http://invenio-software.org/download/invenio-1.1.3.tar.gz
-      $ wget http://invenio-software.org/download/invenio-1.1.3.tar.gz.md5
-      $ wget http://invenio-software.org/download/invenio-1.1.3.tar.gz.sig
-      $ md5sum -c invenio-1.1.3.tar.gz.md5
-      $ gpg --verify invenio-1.1.3.tar.gz.sig invenio-1.1.3.tar.gz
-      $ tar xvfz invenio-1.1.3.tar.gz
-      $ cd invenio-1.1.3
+      $ wget http://invenio-software.org/download/invenio-1.1.4.tar.gz
+      $ wget http://invenio-software.org/download/invenio-1.1.4.tar.gz.md5
+      $ wget http://invenio-software.org/download/invenio-1.1.4.tar.gz.sig
+      $ md5sum -c invenio-1.1.4.tar.gz.md5
+      $ gpg --verify invenio-1.1.4.tar.gz.sig invenio-1.1.4.tar.gz
+      $ tar xvfz invenio-1.1.4.tar.gz
+      $ cd invenio-1.1.4
       $ ./configure
       $ make
       $ make install
@@ -358,19 +357,19 @@ Contents
           sources.  (The built files will be installed into different
           "target" directories later.)
 
-      $ wget http://invenio-software.org/download/invenio-1.1.3.tar.gz
-      $ wget http://invenio-software.org/download/invenio-1.1.3.tar.gz.md5
-      $ wget http://invenio-software.org/download/invenio-1.1.3.tar.gz.sig
+      $ wget http://invenio-software.org/download/invenio-1.1.4.tar.gz
+      $ wget http://invenio-software.org/download/invenio-1.1.4.tar.gz.md5
+      $ wget http://invenio-software.org/download/invenio-1.1.4.tar.gz.sig
 
           Fetch Invenio source tarball from the distribution server,
           together with MD5 checksum and GnuPG cryptographic signature
           files useful for verifying the integrity of the tarball.
 
-      $ md5sum -c invenio-1.1.3.tar.gz.md5
+      $ md5sum -c invenio-1.1.4.tar.gz.md5
 
           Verify MD5 checksum.
 
-      $ gpg --verify invenio-1.1.3.tar.gz.sig invenio-1.1.3.tar.gz
+      $ gpg --verify invenio-1.1.4.tar.gz.sig invenio-1.1.4.tar.gz
 
           Verify GnuPG cryptographic signature.  Note that you may
           first have to import my public key into your keyring, if you
@@ -382,11 +381,11 @@ Contents
           warning that may follow after the signature has been
           successfully verified.
 
-      $ tar xvfz invenio-1.1.3.tar.gz
+      $ tar xvfz invenio-1.1.4.tar.gz
 
           Untar the distribution tarball.
 
-      $ cd invenio-1.1.3
+      $ cd invenio-1.1.4
 
           Go to the source directory.
 
