@@ -87,7 +87,8 @@ from invenio.config import (CFG_CERN_SITE,
                             CFG_BIBINDEX_CHARS_PUNCTUATION,
                             CFG_BASE_URL,
                             CFG_SCOAP3_API_SERVER,
-                            CFG_SCOAP3_ONLY_MEMBERS_ACCESS)
+                            CFG_SCOAP3_ONLY_MEMBERS_ACCESS,
+                            CFG_SCOPA3_MASTER_WITH_API)
 
 
 from invenio.search_engine_config import \
@@ -6797,6 +6798,11 @@ def prs_display_results(kwargs=None, results_final=None, req=None, of=None, sf=N
                                         f, ec, verbose, ln, print_overview=em == "" or EM_REPOSITORY["overview"] in em)
         # print number of hits found for XML outputs:
         if of.startswith("x") or of == 'mobb':
+            if CFG_SCOPA3_MASTER_WITH_API:
+                req.write("""<!-- You are using free SCOAP3 API in BETA version.
+                                  Here you can get only a limited number of records
+                                  per qury, please visit api.scopa3.org to get a
+                                  free access to unlimited records download. -->\n""")
             req.write("<!-- Search-Engine-Total-Number-Of-Results: %s -->\n" % kwargs['results_final_nb_total'])
         # print records:
         if of in ['hcs', 'hcs2']:
