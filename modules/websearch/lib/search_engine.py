@@ -132,6 +132,7 @@ from invenio.htmlutils import get_mathjax_header
 from invenio.htmlutils import nmtoken_from_string
 from invenio.urlutils import redirect_to_url
 from invenio import bibrecord
+from invenio.web_api_key import acc_get_uid_from_request
 
 import invenio.template
 webstyle_templates = invenio.template.load('webstyle')
@@ -152,7 +153,7 @@ from invenio.dbquery import run_sql, \
                             run_sql_with_limit, \
                             wash_table_column_name, \
                             get_table_update_time
-from invenio.webuser import getUid, collect_user_info, session_param_set
+from invenio.webuser import getUid, collect_user_info, session_param_set, get_session
 from invenio.webpage import pageheaderonly, pagefooteronly, create_error_box, write_warning
 from invenio.messages import gettext_set_language
 from invenio.search_engine_query_parser import SearchQueryParenthesisedParser, \
@@ -5610,6 +5611,11 @@ def perform_request_search(req=None, cc=CFG_SITE_NAME, c=None, p="", f="", rg=No
     if CFG_SCOAP3_ONLY_MEMBERS_ACCESS:
         if req:
             uid = getUid(req)
+            if not uid:
+                ses = get_session(req)
+                uri = ses['user_info']['uri'].split('?')
+                uid = acc_get_uid_from_request(uri[0], uri[1])
+
             if uid <= 0:
                 redirect_to_url(req, CFG_SITE_URL)
 
