@@ -153,7 +153,7 @@ from invenio.dbquery import run_sql, \
                             run_sql_with_limit, \
                             wash_table_column_name, \
                             get_table_update_time
-from invenio.webuser import getUid, collect_user_info, session_param_set, get_session
+from invenio.webuser import getUid, collect_user_info, session_param_set
 from invenio.webpage import pageheaderonly, pagefooteronly, create_error_box, write_warning
 from invenio.messages import gettext_set_language
 from invenio.search_engine_query_parser import SearchQueryParenthesisedParser, \
@@ -5612,8 +5612,8 @@ def perform_request_search(req=None, cc=CFG_SITE_NAME, c=None, p="", f="", rg=No
         if req:
             uid = getUid(req)
             if not uid:
-                ses = get_session(req)
-                uri = ses['user_info']['uri'].split('?')
+                ui = collect_user_info()
+                uri = ui['uri'].split('?')
                 uid = acc_get_uid_from_request(uri[0], uri[1])
 
             if uid <= 0:
