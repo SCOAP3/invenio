@@ -5612,9 +5612,9 @@ def perform_request_search(req=None, cc=CFG_SITE_NAME, c=None, p="", f="", rg=No
         if req:
             uid = getUid(req)
             if not uid:
-                ui = collect_user_info()
+                ui = collect_user_info(req)
                 uri = ui['uri'].split('?')
-                uid = acc_get_uid_from_request(uri[0], uri[1])
+                uid = acc_get_uid_from_request(CFG_SITE_URL+uri[0], uri[1])
 
             if uid <= 0:
                 redirect_to_url(req, CFG_SITE_URL)
