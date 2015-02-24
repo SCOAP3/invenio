@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 ##
 ## This file is part of Invenio.
-## Copyright (C) 2009, 2010, 2011 CERN.
+## Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014 CERN.
 ##
 ## Invenio is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
@@ -1011,7 +1011,7 @@ def call_authorlist_extract(active_file, extracted_file,
                         ticketid = create_authorlist_ticket(matching_fields, \
                                                             identifier, queue)
                         if ticketid:
-                            write_message("authorlist RT ticket %d submitted for %s" % (ticketid, identifier))
+                            write_message("authorlist RT ticket %s submitted for %s" % (ticketid, identifier))
                         else:
                             all_err_msg.append("Error while submitting RT ticket for %s" % (identifier,))
                     # Replace 100,700 fields of original record with extracted fields
@@ -1210,7 +1210,7 @@ def create_authorlist_ticket(matching_fields, identifier, queue):
     @type queue: string
 
     @return: return the ID of the created ticket, or None on failure
-    @rtype: int or None
+    @rtype: string or None
     """
     subject = "[OAI Harvest] UNDEFINED affiliations for record %s" % (identifier,)
     text = """
@@ -1245,7 +1245,7 @@ def create_ticket(queue, subject, text=""):
     @type text: string
 
     @return: return the ID of the created ticket, or None on failure
-    @rtype: int or None
+    @rtype: string or None
     """
     # Initialize BibCatalog connection as default user, if possible
     if BIBCATALOG_SYSTEM is not None:
@@ -1406,6 +1406,7 @@ def get_dates(dates):
 
 
 def get_identifier_names(identifier):
+    """Return list of identifiers from a comma-separated string."""
     if identifier:
         # Let's see if the user had a comma-separated list of OAI ids.
         stripped_idents = []
@@ -1416,9 +1417,6 @@ def get_identifier_names(identifier):
                 elif "arXiv" in ident:
                     # New style arXiv ID
                     ident = ident.replace("arXiv", "oai:arXiv.org")
-                elif "/" in ident:
-                    # Old style arXiv ID?
-                    ident = "%s%s" % ("oai:arXiv.org:", ident)
             stripped_idents.append(ident.strip())
         return stripped_idents
 

@@ -58,6 +58,7 @@ import base64
 import binascii
 import cgi
 import sys
+import copy
 
 if sys.hexversion < 0x2060000:
     from md5 import md5
@@ -80,6 +81,7 @@ from datetime import datetime
 from mimetypes import MimeTypes
 from thread import get_ident
 from weakref import ref
+from urlparse import urlsplit, parse_qs
 
 
 from invenio import webinterface_handler_config as apache
@@ -2148,7 +2150,7 @@ class BibDoc(object):
         run_sql('DELETE FROM bibrec_bibdoc WHERE id_bibdoc=%s', (self.id, ))
         run_sql('DELETE FROM bibdoc_bibdoc WHERE id_bibdoc1=%s OR id_bibdoc2=%s', (self.id, self.id))
         run_sql('DELETE FROM bibdoc WHERE id=%s', (self.id, ))
-        run_sql('INSERT DELAYED INTO hstDOCUMENT(action, id_bibdoc, doctimestamp) VALUES("EXPUNGE", %s, NOW())', (self.id, ))
+        run_sql('INSERT INTO hstDOCUMENT(action, id_bibdoc, doctimestamp) VALUES("EXPUNGE", %s, NOW())', (self.id, ))
         run_sql('DELETE FROM bibdocfsinfo WHERE id_bibdoc=%s', (self.id, ))
         del self._docfiles
         del self.id
@@ -2683,9 +2685,9 @@ class BibDoc(object):
             """Log an action into the bibdoclog table."""
             try:
                 if timestamp:
-                    run_sql('INSERT DELAYED INTO hstDOCUMENT(action, id_bibdoc, docname, docformat, docversion, docsize, docchecksum, doctimestamp) VALUES(%s, %s, %s, %s, %s, %s, %s, %s)', (action, docid, docname, docformat, version, size, checksum, timestamp))
+                    run_sql('INSERT INTO hstDOCUMENT(action, id_bibdoc, docname, docformat, docversion, docsize, docchecksum, doctimestamp) VALUES(%s, %s, %s, %s, %s, %s, %s, %s)', (action, docid, docname, docformat, version, size, checksum, timestamp))
                 else:
-                    run_sql('INSERT DELAYED INTO hstDOCUMENT(action, id_bibdoc, docname, docformat, docversion, docsize, docchecksum, doctimestamp) VALUES(%s, %s, %s, %s, %s, %s, %s, NOW())', (action, docid, docname, docformat, version, size, checksum))
+                    run_sql('INSERT INTO hstDOCUMENT(action, id_bibdoc, docname, docformat, docversion, docsize, docchecksum, doctimestamp) VALUES(%s, %s, %s, %s, %s, %s, %s, NOW())', (action, docid, docname, docformat, version, size, checksum))
             except DatabaseError:
                 register_exception()
 
@@ -2854,7 +2856,7 @@ class BibDoc(object):
         docformat = docformat.upper()
         if not version:
             version = self.get_latest_version()
-        return run_sql("INSERT DELAYED INTO rnkDOWNLOADS "
+        return run_sql("INSERT INTO rnkDOWNLOADS "
             "(id_bibrec,id_bibdoc,file_version,file_format,"
             "id_user,client_host,download_time) VALUES "
             "(%s,%s,%s,%s,%s,INET_ATON(%s),NOW())",
@@ -2991,6 +2993,23 @@ class BibDocFile(object):
             self.__bibdoc = ref(bibdoc)
             return bibdoc
         return self.__bibdoc()
+
+    def __getstate__(self):
+        """Remove weakref so the object can be pickled."""
+        dict_ = copy.copy(self.__dict__)
+        dict_['_BibDocFile__bibdoc'] = self.bibdoc
+        return  dict_
+
+    def __setstate__(self, data_dict):
+        """Undo what `__getstate__` did setting back the weakref.
+
+        :param data_dict: `dict` from `__getstate__`
+        """
+        for (name, value) in data_dict.iteritems():
+            setattr(self, name, value)
+
+        if self.__bibdoc is not None:
+            self.__bibdoc = ref(self.__bibdoc)
 
     def __repr__(self):
         return ('BibDocFile(%s,  %i, %s, %s, %i, %i, %s, %s, %s, %s)' % (repr(self.fullpath), self.version, repr(self.name), repr(self.format), self.recids_doctypes[0][0], self.docid, repr(self.status), repr(self.checksum), repr(self.more_info), repr(self.human_readable)))
@@ -3663,17 +3682,24 @@ def decompose_bibdocfile_fullpath(fullpath):
     except:
         raise InvenioBibDocFileError, "Fullpath %s doesn't correspond to a valid bibdocfile fullpath" % fullpath
 
-_RE_BIBDOCFILE_URL = re.compile("(%s|%s)/%s/(?P<recid>\d+)(?P<rest>.*)" % (re.escape(CFG_SITE_URL), re.escape(CFG_SITE_SECURE_URL), re.escape(CFG_SITE_RECORD)))
+_RE_BIBDOCFILE_URL = re.compile("/%s/(?P<recid>\d+)/files/(?P<rest>.*)" % (re.escape(CFG_SITE_RECORD), ))
 def decompose_bibdocfile_url(url):
     """Given a bibdocfile_url return a triple (recid, docname, format)."""
     if url.startswith('%s/getfile.py' % CFG_SITE_URL) or url.startswith('%s/getfile.py' % CFG_SITE_SECURE_URL):
         return decompose_bibdocfile_very_old_url(url)
 
-    g = _RE_BIBDOCFILE_URL.match(urllib.unquote(url))
+    scheme, netloc, path, query, dummy_fragment = urlsplit(url)
+    if "%s://%s" % (scheme, netloc) not in (CFG_SITE_URL, CFG_SITE_SECURE_URL):
+        raise InvenioBibDocFileError("URL %s doesn't correspond to a valid BibDocFile URL." % url)
+
+    g = _RE_BIBDOCFILE_URL.match(urllib.unquote(path))
     if g:
         recid = int(g.group('recid'))
         rest = g.group('rest')
         dummy, docname, docformat = decompose_file(rest)
+        query = parse_qs(query)
+        if 'subformat' in query:
+            docformat += ";%s" % query['subformat'][0]
         return recid, docname, docformat
     else:
         raise InvenioBibDocFileError, "Url %s doesn't correspond to a valid record inside the system." % url
@@ -3693,7 +3719,7 @@ def decompose_bibdocfile_very_old_url(url):
         params = urllib.splitquery(url)[1]
         if params:
             try:
-                params = cgi.parse_qs(params)
+                params = parse_qs(params)
                 if 'docid' in params:
                     docid = int(params['docid'][0])
                     bibdoc = BibDoc.create_instance(docid)
@@ -3723,27 +3749,27 @@ def decompose_bibdocfile_very_old_url(url):
 
 def get_docname_from_url(url):
     """Return a potential docname given a url"""
-    path = urllib2.urlparse.urlsplit(urllib.unquote(url))[2]
+    path = urlsplit(urllib.unquote(url))[2]
     filename = os.path.split(path)[-1]
     return file_strip_ext(filename)
 
 def get_format_from_url(url):
     """Return a potential format given a url"""
-    path = urllib2.urlparse.urlsplit(urllib.unquote(url))[2]
+    path = urlsplit(urllib.unquote(url))[2]
     filename = os.path.split(path)[-1]
     return filename[len(file_strip_ext(filename)):]
 
 def clean_url(url):
     """Given a local url e.g. a local path it render it a realpath."""
     if is_url_a_local_file(url):
-        path = urllib2.urlparse.urlsplit(urllib.unquote(url))[2]
+        path = urlsplit(urllib.unquote(url))[2]
         return os.path.abspath(path)
     else:
         return url
 
 def is_url_a_local_file(url):
     """Return True if the given URL is pointing to a local file."""
-    protocol = urllib2.urlparse.urlsplit(url)[0]
+    protocol = urlsplit(url)[0]
     return protocol in ('', 'file')
 
 def check_valid_url(url):
@@ -3756,7 +3782,7 @@ def check_valid_url(url):
     """
     try:
         if is_url_a_local_file(url):
-            path = urllib2.urlparse.urlsplit(urllib.unquote(url))[2]
+            path = urlsplit(urllib.unquote(url))[2]
             if os.path.abspath(path) != path:
                 raise StandardError, "%s is not a normalized path (would be %s)." % (path, os.path.normpath(path))
             for allowed_path in CFG_BIBUPLOAD_FFT_ALLOWED_LOCAL_PATHS + [CFG_TMPDIR, CFG_TMPSHAREDDIR, CFG_WEBSUBMIT_STORAGEDIR]:
@@ -3813,7 +3839,7 @@ def download_local_file(filename, docformat=None):
 
     # Now try to copy.
     try:
-        path = urllib2.urlparse.urlsplit(urllib.unquote(filename))[2]
+        path = urlsplit(urllib.unquote(filename))[2]
         if os.path.abspath(path) != path:
             raise StandardError, "%s is not a normalized path (would be %s)." \
                     % (path, os.path.normpath(path))

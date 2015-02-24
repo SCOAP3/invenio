@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 ##
 ## This file is part of Invenio.
-## Copyright (C) 2008, 2009, 2010, 2011, 2012, 2013, 2014 CERN.
+## Copyright (C) 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015 CERN.
 ##
 ## Invenio is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
@@ -188,7 +188,8 @@ Please, update your invenio-local.conf file accordingly.""" % (option_name, new_
                        'CFG_BIBSCHED_NON_CONCURRENT_TASKS',
                        'CFG_REDIS_HOSTS',
                        'CFG_BIBSCHED_INCOMPATIBLE_TASKS',
-                       'CFG_ICON_CREATION_FORMAT_MAPPINGS']:
+                       'CFG_ICON_CREATION_FORMAT_MAPPINGS',
+                       'CFG_BIBEDIT_AUTOCOMPLETE']:
         try:
             option_value = option_value[1:-1]
             if option_name == "CFG_BIBEDIT_EXTEND_RECORD_WITH_COLLECTION_TEMPLATE" and option_value.strip().startswith("{"):
@@ -221,6 +222,7 @@ You may want to customise your invenio-local.conf configuration accordingly."""
                        'CFG_WEBSEARCH_USE_MATHJAX_FOR_FORMATS',
                        'CFG_BIBUPLOAD_STRONG_TAGS',
                        'CFG_BIBFORMAT_HIDDEN_TAGS',
+                       'CFG_BIBFORMAT_HIDDEN_RECJSON_FIELDS',
                        'CFG_BIBSCHED_GC_TASKS_TO_REMOVE',
                        'CFG_BIBSCHED_GC_TASKS_TO_ARCHIVE',
                        'CFG_BIBUPLOAD_FFT_ALLOWED_LOCAL_PATHS',
@@ -951,15 +953,19 @@ def cli_cmd_run_web_tests(conf):
     if not build_and_run_web_test_suite():
         sys.exit(1)
 
-def _detect_ip_address():
+def _detect_ip_address(conf):
     """Detect IP address of this computer.  Useful for creating Apache
-    vhost conf snippet on RHEL like machines.
+    vhost conf snippet on RHEL like machines.  However, if wanted site
+    is 0.0.0.0, then use that, since we are running inside Docker.
 
     @return: IP address, or '*' if cannot detect
     @rtype: string
     @note: creates socket for real in order to detect real IP address,
         not the loopback one.
+
     """
+    if '0.0.0.0' in conf.get('Invenio', 'CFG_SITE_URL'):
+        return '0.0.0.0'
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('invenio-software.org', 0))
@@ -1209,7 +1215,7 @@ WSGIRestrictStdout Off
        'webdir': conf.get('Invenio', 'CFG_WEBDIR'),
        'logdir': conf.get('Invenio', 'CFG_LOGDIR'),
        'wsgidir': os.path.join(conf.get('Invenio', 'CFG_PREFIX'), 'var', 'www-wsgi'),
-       'vhost_ip_address': vhost_ip_address_needed and _detect_ip_address() or '*',
+       'vhost_ip_address': vhost_ip_address_needed and _detect_ip_address(conf) or '*',
        'listen_directive': listen_directive_needed and 'Listen ' + vhost_site_url_port or \
                            '#Listen ' + vhost_site_url_port,
        'wsgi_socket_directive': (wsgi_socket_directive_needed and \
@@ -1228,6 +1234,8 @@ NameVirtualHost %(vhost_ip_address)s:%(vhost_site_secure_url_port)s
 %(ssl_pem_directive)s
 %(ssl_crt_directive)s
 %(ssl_key_directive)s
+%(ssl_protocol_directive)s
+%(ssl_cipher_directive)s
 WSGIRestrictStdout Off
 <Files *.pyc>
    deny from all
@@ -1275,7 +1283,7 @@ WSGIRestrictStdout Off
        'webdir': conf.get('Invenio', 'CFG_WEBDIR'),
        'logdir': conf.get('Invenio', 'CFG_LOGDIR'),
        'wsgidir' : os.path.join(conf.get('Invenio', 'CFG_PREFIX'), 'var', 'www-wsgi'),
-       'vhost_ip_address': vhost_ip_address_needed and _detect_ip_address() or '*',
+       'vhost_ip_address': vhost_ip_address_needed and _detect_ip_address(conf) or '*',
        'listen_directive' : listen_directive_needed and 'Listen ' + vhost_site_secure_url_port or \
                             '#Listen ' + vhost_site_secure_url_port,
        'ssl_pem_directive': ssl_pem_directive_needed and \
@@ -1287,6 +1295,12 @@ WSGIRestrictStdout Off
        'ssl_key_directive': ssl_pem_directive_needed and \
                             '#SSLCertificateKeyFile %s' % ssl_key_path or \
                             'SSLCertificateKeyFile %s' % ssl_key_path,
+       'ssl_protocol_directive': ssl_pem_directive_needed and \
+                            'SSLProtocol all -SSLv2 -SSLv3' or \
+                            '#SSLProtocol all -SSLv2 -SSLv3',
+       'ssl_cipher_directive': ssl_pem_directive_needed and \
+                            'SSLCipherSuite HIGH:MEDIUM:!ADH' or \
+                            '#SSLCipherSuite HIGH:MEDIUM:!ADH',
        'xsendfile_directive': xsendfile_directive,
        'directory_www_directive': directory_www_directive,
        'directory_wsgi_directive': directory_wsgi_directive,

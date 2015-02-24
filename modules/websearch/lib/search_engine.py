@@ -75,6 +75,7 @@ from invenio.config import \
      CFG_SITE_NAME, \
      CFG_LOGDIR, \
      CFG_BIBFORMAT_HIDDEN_TAGS, \
+     CFG_BIBFORMAT_HIDDEN_RECJSON_FIELDS, \
      CFG_SITE_URL, \
      CFG_ACCESS_CONTROL_LEVEL_ACCOUNTS, \
      CFG_SOLR_URL, \
@@ -86,11 +87,15 @@ from invenio.config import \
      CFG_BIBSORT_ENABLED, \
      CFG_XAPIAN_ENABLED, \
      CFG_BIBINDEX_CHARS_PUNCTUATION, \
-     CFG_BASE_URL
+     CFG_BASE_URL, \
+     CFG_WEBSEARCH_MAX_RECORDS_REFERSTO, \
+     CFG_WEBSEARCH_MAX_RECORDS_CITEDBY
 
 from invenio.search_engine_config import \
      InvenioWebSearchUnknownCollectionError, \
      InvenioWebSearchWildcardLimitError, \
+     InvenioWebSearchReferstoLimitError, \
+     InvenioWebSearchCitedbyLimitError, \
      CFG_WEBSEARCH_IDXPAIRS_FIELDS,\
      CFG_WEBSEARCH_IDXPAIRS_EXACT_SEARCH
 from invenio.search_engine_utils import (get_fieldvalues,
@@ -712,7 +717,7 @@ def get_nicely_ordered_collection_list(collid=1, level=0, ln=CFG_SITE_LANG):
        Suitable for create_search_box()."""
     colls_nicely_ordered = []
     res = run_sql("""SELECT c.name,cc.id_son FROM collection_collection AS cc, collection AS c
-                     WHERE c.id=cc.id_son AND cc.id_dad=%s ORDER BY score DESC""", (collid, ))
+                     WHERE c.id=cc.id_son AND cc.id_dad=%s ORDER BY score ASC""", (collid, ))
     for c, cid in res:
         # make a nice printable name (e.g. truncate c_printable for
         # long collection names in given language):
@@ -1887,7 +1892,7 @@ def get_coll_sons(coll, coll_type='r', public_only=1):
             "LEFT JOIN collection_collection AS cc ON c.id=cc.id_son "\
             "LEFT JOIN collection AS ccc ON ccc.id=cc.id_dad "\
             "WHERE cc.type%s AND ccc.name=%%s" % coll_type_query
-    query += " ORDER BY cc.score DESC"
+    query += " ORDER BY cc.score ASC"
     res = run_sql(query, query_params)
     for name in res:
         if not public_only or not collection_restricted_p(name[0]):
@@ -1958,7 +1963,7 @@ def get_coll_real_descendants(coll, coll_type='_', get_hosted_colls=True):
     res = run_sql("""SELECT c.name,c.dbquery FROM collection AS c
                      LEFT JOIN collection_collection AS cc ON c.id=cc.id_son
                      LEFT JOIN collection AS ccc ON ccc.id=cc.id_dad
-                     WHERE ccc.name=%s AND cc.type LIKE %s ORDER BY cc.score DESC""",
+                     WHERE ccc.name=%s AND cc.type LIKE %s ORDER BY cc.score ASC""",
                   (coll, coll_type,))
     for name, dbquery in res:
         if dbquery: # this is 'real' collection, so return it:
@@ -2154,6 +2159,15 @@ def search_pattern(req=None, p=None, f=None, m=None, ap=0, of="id", verbose=0, l
             basic_search_unit_hitset = excp.res
             if of.startswith("h"):
                 write_warning(_("Search term too generic, displaying only partial results..."), req=req)
+        except InvenioWebSearchReferstoLimitError, excp:
+            basic_search_unit_hitset = excp.res
+            if of.startswith("h"):
+                write_warning(_("Search term after reference operator too generic, displaying only partial results..."), req=req)
+        except InvenioWebSearchCitedbyLimitError, excp:
+            basic_search_unit_hitset = excp.res
+            if of.startswith("h"):
+                write_warning(_("Search term after citedby operator too generic, displaying only partial results..."), req=req)
+
         # FIXME: print warning if we use native full-text indexing
         if bsu_f == 'fulltext' and bsu_m != 'w' and of.startswith('h') and not CFG_SOLR_URL:
             write_warning(_("No phrase index available for fulltext yet, looking for word combination..."), req=req)
@@ -2511,8 +2525,16 @@ def search_unit_in_bibwords(word, f, decompress=zlib.decompress, wl=0):
         if stemming_language:
             word0 = lower_index_term(word0)
             word1 = lower_index_term(word1)
-            word0 = stem(word0, stemming_language)
-            word1 = stem(word1, stemming_language)
+            # We remove trailing truncation character before stemming
+            if word0.endswith('%'):
+                word0 = stem(word0[:-1], stemming_language) + '%'
+            else:
+                word0 = stem(word0, stemming_language)
+            if word1.endswith('%'):
+                word1 = stem(word1[:-1], stemming_language) + '%'
+            else:
+                word1 = stem(word1, stemming_language)
+
         word0_washed = wash_index_term(word0)
         word1_washed = wash_index_term(word1)
         if f.endswith('count'):
@@ -2536,7 +2558,11 @@ def search_unit_in_bibwords(word, f, decompress=zlib.decompress, wl=0):
             word = re_word.sub('', word)
         if stemming_language:
             word = lower_index_term(word)
-            word = stem(word, stemming_language)
+            # We remove trailing truncation character before stemming
+            if word.endswith('%'):
+                word = stem(word[:-1], stemming_language) + '%'
+            else:
+                word = stem(word, stemming_language)
         if word.find('%') >= 0: # do we have wildcard in the word?
             if f == 'journal':
                 # FIXME: quick hack for the journal index
@@ -2937,7 +2963,11 @@ def search_unit_refersto(query):
     """
     if query:
         ahitset = search_pattern(p=query)
-        return get_refersto_hitset(ahitset)
+        res = get_refersto_hitset(ahitset, record_limit=CFG_WEBSEARCH_MAX_RECORDS_REFERSTO)
+
+        if len(ahitset) >= CFG_WEBSEARCH_MAX_RECORDS_REFERSTO:
+            raise InvenioWebSearchReferstoLimitError(res)
+        return res
     else:
         return intbitset([])
 
@@ -2949,11 +2979,14 @@ def search_unit_refersto_excluding_selfcites(query):
     if query:
         ahitset = search_pattern(p=query)
         citers = intbitset()
-        citations = get_cited_by_list(ahitset)
-        selfcitations = get_self_cited_by_list(ahitset)
+        citations = get_cited_by_list(ahitset, record_limit=CFG_WEBSEARCH_MAX_RECORDS_REFERSTO)
+        selfcitations = get_self_cited_by_list(ahitset, record_limit=CFG_WEBSEARCH_MAX_RECORDS_REFERSTO)
         for cites, selfcites in zip(citations, selfcitations):
             # cites is in the form [(citee, citers), ...]
             citers += cites[1] - selfcites[1]
+
+        if len(ahitset) >= CFG_WEBSEARCH_MAX_RECORDS_REFERSTO:
+            raise InvenioWebSearchReferstoLimitError(citers)
         return citers
     else:
         return intbitset([])
@@ -3000,7 +3033,11 @@ def search_unit_citedby(query):
     if query:
         ahitset = search_pattern(p=query)
         if ahitset:
-            return get_citedby_hitset(ahitset)
+            res = get_citedby_hitset(ahitset, record_limit=CFG_WEBSEARCH_MAX_RECORDS_CITEDBY)
+
+            if len(ahitset) >= CFG_WEBSEARCH_MAX_RECORDS_CITEDBY:
+                raise InvenioWebSearchCitedbyLimitError(res)
+            return res
         else:
             return intbitset([])
     else:
@@ -3014,11 +3051,14 @@ def search_unit_citedby_excluding_selfcites(query):
     if query:
         ahitset = search_pattern(p=query)
         citees = intbitset()
-        references = get_refers_to_list(ahitset)
-        selfreferences = get_self_refers_to_list(ahitset)
+        references = get_refers_to_list(ahitset, record_limit=CFG_WEBSEARCH_MAX_RECORDS_CITEDBY)
+        selfreferences = get_self_refers_to_list(ahitset, record_limit=CFG_WEBSEARCH_MAX_RECORDS_CITEDBY)
         for refs, selfrefs in zip(references, selfreferences):
             # refs is in the form [(citer, citees), ...]
             citees += refs[1] - selfrefs[1]
+
+        if len(ahitset) >= CFG_WEBSEARCH_MAX_RECORDS_CITEDBY:
+            raise InvenioWebSearchCitedbyLimitError(citees)
         return citees
     else:
         return intbitset([])
@@ -4498,6 +4538,9 @@ def print_records(req, recIDs, jrec=1, rg=CFG_WEBSEARCH_DEF_RECORDS_IN_GROUPS, f
 
         #req.write("%s:%d-%d" % (recIDs, irec_min, irec_max))
 
+        if len(recIDs) > rg and rg != -9999:
+            recIDs = slice_records(recIDs, jrec, rg)
+
         if format.startswith('x'):
 
             # print header if needed
@@ -4932,14 +4975,28 @@ def print_record(recID, format='hb', ot='', ln=CFG_SITE_LANG, decompress=zlib.de
     if format == 'recstruct':
         return get_record(recID)
 
-    if format.startswith('recjson'):
+    #check from user information if the user has the right to see hidden fields/tags in the
+    #records as well
+    can_see_hidden = False
+    if user_info:
+        can_see_hidden = user_info.get('precached_canseehiddenmarctags', False)
+
+    if format == 'recjson':
         import json
         from invenio.bibfield import get_record as get_recjson
-        if ot:
-            ot = list(set(ot) - set(CFG_BIBFORMAT_HIDDEN_TAGS))
-            return json.dumps(dict(get_recjson(recID, fields=ot)))
-        else:
-            return json.dumps(get_recjson(recID).dumps())
+        from invenio.bibfield_utils import SmartDict
+        recjson = get_recjson(recID)
+        record = SmartDict()
+        keys = ot or recjson.keys()
+        for key in keys:
+            if key == 'bibdocs':
+                continue
+            if not can_see_hidden and key in CFG_BIBFORMAT_HIDDEN_RECJSON_FIELDS:
+                continue
+            record[key] = recjson.get(key)
+        # skipkeys is True to skip e.g. the bibdocs key, which is a non
+        # primitive object.
+        return json.dumps(dict(record), skipkeys=True)
 
     _ = gettext_set_language(ln)
 
@@ -4952,19 +5009,9 @@ def print_record(recID, format='hb', ot='', ln=CFG_SITE_LANG, decompress=zlib.de
     else:
         display_claim_this_paper = False
 
-
-
-
-    #check from user information if the user has the right to see hidden fields/tags in the
-    #records as well
-    can_see_hidden = False
-    if user_info:
-        can_see_hidden = user_info.get('precached_canseehiddenmarctags', False)
-
     can_edit_record = False
     if check_user_can_edit_record(user_info, recID):
         can_edit_record = True
-
 
     out = ""
 
@@ -5028,9 +5075,12 @@ def print_record(recID, format='hb', ot='', ln=CFG_SITE_LANG, decompress=zlib.de
             out += "%s" % decompress(res[0][0])
         elif ot:
             # field-filtered output was asked for; print only some fields
+            record = get_record(recID)
             if not can_see_hidden:
+                for tag in CFG_BIBFORMAT_HIDDEN_TAGS:
+                    del record[tag]
                 ot = list(set(ot) - set(CFG_BIBFORMAT_HIDDEN_TAGS))
-            out += record_xml_output(get_record(recID), ot)
+            out += record_xml_output(record, ot)
         else:
             # record 'recID' is not formatted in 'format' or we ask
             # for field-filtered output -- they are not in "bibfmt"
@@ -6259,13 +6309,18 @@ def prs_apply_search_limits(results_final, kwargs=None, req=None, of=None, cc=No
         if verbose and of.startswith("h"):
             write_warning("Search stage 5: applying time etc limits, from %s until %s..." % (datetext1, datetext2), req=req)
         try:
-            results_final = intersect_results_with_hitset(req,
-                                                          results_final,
-                                                          search_unit_in_bibrec(datetext1, datetext2, dt),
-                                                          ap,
-                                                          aptext= _("No match within your time limits, "
-                                                                    "discarding this condition..."),
-                                                          of=of)
+            results_temp = intersect_results_with_hitset(
+                req,
+                results_final,
+                search_unit_in_bibrec(datetext1, datetext2, dt),
+                ap,
+                aptext= _("No match within your time limits, "
+                          "discarding this condition..."),
+                of=of)
+            if results_temp:
+                results_final.update(results_temp)
+            else:
+                results_final.clear()
         except:
             register_exception(req=req, alert_admin=True)
             if of.startswith("h"):
@@ -6288,13 +6343,18 @@ def prs_apply_search_limits(results_final, kwargs=None, req=None, of=None, cc=No
         if verbose and of.startswith("h"):
             write_warning("Search stage 5: applying search pattern limit %s..." % cgi.escape(pl), req=req)
         try:
-            results_final = intersect_results_with_hitset(req,
-                                                          results_final,
-                                                          search_pattern_parenthesised(req, pl, ap=0, ln=ln, wl=wl),
-                                                          ap,
-                                                          aptext=_("No match within your search limits, "
-                                                                   "discarding this condition..."),
-                                                          of=of)
+            results_temp = intersect_results_with_hitset(
+                req,
+                results_final,
+                search_pattern_parenthesised(req, pl, ap=0, ln=ln, wl=wl),
+                ap,
+                aptext=_("No match within your search limits, "
+                         "discarding this condition..."),
+                of=of)
+            if results_temp:
+                results_final.update(results_temp)
+            else:
+                results_final.clear()
         except:
             register_exception(req=req, alert_admin=True)
             if of.startswith("h"):
