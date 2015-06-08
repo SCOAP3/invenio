@@ -1,105 +1,132 @@
---------------------------------------------------------------------
-Invenio v1.1.4 is released
-August 31, 2014
-http://invenio-software.org/
---------------------------------------------------------------------
+============================
+ Invenio v1.2.1 is released
+============================
 
-Invenio v1.1.4 was released on August 31, 2014.
+Invenio v1.2.1 was released on May 21, 2015.
 
-This stable release contains a number of bugfixes and improvements.
-It is recommended to all Invenio sites using v1.1.3 or previous stable
-release series (v0.99, v1.0).
+About
+-----
 
-What's new:
------------
+Invenio is a digital library framework enabling you to build your own
+digital library or document repository on the web.
 
- *) BibDocFile: FFT comment/description documentation (#635);
-    duplicate docname fix (#1930); convert files and icons
-    asynchronously (#1428)
+This stable release update is recommended to all Invenio sites using
+v1.2.0 or previous releases.
 
- *) BibEncode: fix video-encoded files synchro to DB (#1647)
+Security fixes
+--------------
 
- *) BibRank: (Overflow|ZeroDivision)Error usability (#105 #2146)
++ BibAuthorID:
 
- *) BibSched: authorization typo fix in BibTasklet (#1746); more
-    customizable icon creation tasklet; icons creation tasklet
+  - Improves URL redirecting by properly quoting all URL parts, in
+    order to better protect against possible XSS attacks.
 
- *) BibSort: `last_updated` column name typo fix (#1408 #1742)
++ WebStyle:
 
- *) OAIRepository: OAI-PMH handler URL documented (#1027 #2152)
+  - Adds back the `HttpOnly` cookie attribute in order to better
+    protect against potential XSS vulnerabilities.  (#3064)
 
- *) WebComment: attachments in multi-node setup
+Improved features
+-----------------
 
- *) WebJournal: update demo "Article Header" style
++ installation:
 
- *) WebSearch: disable meta tags for deleted records (#1680)
+  - Apache virtual environments are now created with appropriate
+    `WSGIDaemonProcess` user value, taken from the configuration
+    variable `CFG_BIBSCHED_PROCESS_USER`, provided it is set.  This
+    change makes it easier to run Invenio under non-Apache user
+    identity.
 
- *) WebSession: CSRF token in API key settings form (#1855); CSRF
-    tokens in account settings forms (#1855); Python-2.4 combatibility
-    issue fix
+  - Apache virtual environments are now created with appropriate
+    `WSGIPythonHome` directive so that it would be easier to run
+    Invenio from within Python virtual environments.
 
- *) WebSubmit: file stamper option to copy metadata (#1569); new
-    Create_Modify_Interface parameters; value escaping for
-    modifications (#1578); better value escaping (#1578); more
-    customizable Link_Records function; no double-submit (#1020)
-
- *) installation: GnuPG key server location update; location of
-    jquery.treeview
-
- *) jQuery: fix for DataTables dependency URL location (#2078)
-
- *) sequtils: more robust cnum generation (#2119)
-
- *) I18N: fix gender problem in a French translation (#2089)
-
-Download:
+Bug fixes
 ---------
 
-  <http://invenio-software.org/download/invenio-1.1.4.tar.gz>
-  <http://invenio-software.org/download/invenio-1.1.4.tar.gz.md5>
-  <http://invenio-software.org/download/invenio-1.1.4.tar.gz.sig>
++ BibDocFile:
 
-Installation notes:
--------------------
+  - Safer upgrade recipe for migrations from the old document storage
+    model (used in v1.1) to the new document storage model (used in
+    v1.2).
+
++ WebSearch:
+
+  - Removes special behaviour of the "subject" index that was hard-
+    coded based on the index name.  Installations should rather
+    specify wanted behaviour by means of configurable tokeniser
+    instead.
+
+  - Collection names containing slashes are now supported again.
+    However we recommend not to use slashes in collection names; if
+    slashes were wanted for aesthetic reasons, they can be added in
+    visible collection translations.  (#2902)
+
++ global:
+
+  - Replaces `invenio-demo.cern.ch` by `demo.invenio-software.org`
+    which is the new canonical URL of the demo site.  (#2867)
+
++ installation:
+
+  - Releases constraint on using an old version of `h5py` that was
+    anyway no longer available on PyPI.
+
++ testutils:
+
+  - Switches off SSL verification when running the test suite.  Useful
+    for Python-2.7.9 where self-signed SSL certificates (that are
+    usually used on development installations) would cause apparent
+    test failures.  (#2868)
+
+Download
+--------
+
+- http://invenio-software.org/download/invenio-1.2.1.tar.gz
+- http://invenio-software.org/download/invenio-1.2.1.tar.gz.md5
+- http://invenio-software.org/download/invenio-1.2.1.tar.gz.sig
+
+Installation
+------------
 
 Please follow the INSTALL file bundled in the distribution tarball.
 
-Upgrade notes:
---------------
+Upgrade
+-------
 
 Please proceed as follows:
 
- a) Stop your bibsched queue and your Apache server.
+a) Stop your bibsched queue and your Apache server.
 
- b) Install the update:
+b) Install the update::
 
-     $ tar xvfz invenio-1.1.4.tar.gz
-     $ cd invenio-1.1.4
+     $ tar xvfz invenio-1.2.1.tar.gz
+     $ cd invenio-1.2.1
      $ sudo rsync -a /opt/invenio/etc/ /opt/invenio/etc.OLD/
      $ sh /opt/invenio/etc/build/config.nice
      $ make
-     $ make check-upgrade # (1)
+     $ make check-upgrade
      $ sudo -u www-data make install
      $ sudo rsync -a /opt/invenio/etc.OLD/ \
          --exclude invenio-autotools.conf \
-         /opt/invenio/etc/ # (2)
+         /opt/invenio/etc/ # (1)
      $ sudo -u www-data /opt/invenio/bin/inveniocfg --update-all
      $ sudo -u www-data /opt/invenio/bin/inveniocfg --upgrade
 
-    Notes:
+     (1) If you are upgrading from previous stable release series
+         (v0.99, v1.0 or v1.1), please don't run this rsync command
+         but diff, in order to inspect changes and adapt your old
+         configuration to the new Invenio v1.2 release series.  For
+         more information you may also want to consult release notes
+         coming with Invenio v1.2.0.
 
-    (1) If you have customised your session templates
-        (`websession_templates.py`) in your site-specific overlay,
-        then you will need to add a new `csrf_token` parameter to
-        several of your templates (e.g. `tmpl_user_preferences()`).
-        Running `make check-upgrade` will warn you about this
-        necessity, should it be applicable.
+c) Restart your Apache server and your bibsched queue.
 
-    (2) If you are upgrading from previous stable release series
-        (v0.99 or v1.0), please don't run this rsync command but diff,
-        in order to inspect changes and adapt your old configuration
-        to the new v1.1 release series.
+Happy hacking and thanks for flying Invenio.
 
- c) Restart your Apache server and your bibsched queue.
-
-- end of file -
+| Invenio Development Team
+|   Email: info@invenio-software.org
+|   IRC: #invenio on irc.freenode.net
+|   Twitter: http://twitter.com/inveniosoftware
+|   GitHub: http://github.com/inveniosoftware
+|   URL: http://invenio-software.org

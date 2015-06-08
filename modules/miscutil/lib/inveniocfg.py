@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
-##
-## This file is part of Invenio.
-## Copyright (C) 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015 CERN.
-##
-## Invenio is free software; you can redistribute it and/or
-## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
-## License, or (at your option) any later version.
-##
-## Invenio is distributed in the hope that it will be useful, but
-## WITHOUT ANY WARRANTY; without even the implied warranty of
-## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-## General Public License for more details.
-##
-## You should have received a copy of the GNU General Public License
-## along with Invenio; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+#
+# This file is part of Invenio.
+# Copyright (C) 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015 CERN.
+#
+# Invenio is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 2 of the
+# License, or (at your option) any later version.
+#
+# Invenio is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Invenio; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
 
 """
 Invenio configuration and administration CLI tool.
@@ -1169,6 +1169,7 @@ ServerTokens Prod
 NameVirtualHost %(vhost_ip_address)s:%(vhost_site_url_port)s
 %(listen_directive)s
 %(wsgi_socket_directive)s
+WSGIPythonHome %(wsgi_python_home)s
 WSGIRestrictStdout Off
 <Files *.pyc>
    deny from all
@@ -1200,7 +1201,7 @@ WSGIRestrictStdout Off
         AliasMatch /sitemap-(.*) %(webdir)s/sitemap-$1
         Alias /robots.txt %(webdir)s/robots.txt
         Alias /favicon.ico %(webdir)s/favicon.ico
-        WSGIDaemonProcess invenio processes=5 threads=1 display-name=%%{GROUP} inactivity-timeout=3600 maximum-requests=10000
+        WSGIDaemonProcess invenio processes=5 threads=1 display-name=%%{GROUP} inactivity-timeout=3600 maximum-requests=10000 %(wsgiuser)s
         WSGIImportScript %(wsgidir)s/invenio.wsgi process-group=invenio application-group=%%{GLOBAL}
         WSGIScriptAlias / %(wsgidir)s/invenio.wsgi
         WSGIPassAuthorization On
@@ -1215,9 +1216,12 @@ WSGIRestrictStdout Off
        'webdir': conf.get('Invenio', 'CFG_WEBDIR'),
        'logdir': conf.get('Invenio', 'CFG_LOGDIR'),
        'wsgidir': os.path.join(conf.get('Invenio', 'CFG_PREFIX'), 'var', 'www-wsgi'),
+       'wsgiuser': conf.get('Invenio', 'CFG_BIBSCHED_PROCESS_USER') and
+                   'user='+conf.get('Invenio', 'CFG_BIBSCHED_PROCESS_USER'),
        'vhost_ip_address': vhost_ip_address_needed and _detect_ip_address(conf) or '*',
        'listen_directive': listen_directive_needed and 'Listen ' + vhost_site_url_port or \
                            '#Listen ' + vhost_site_url_port,
+       'wsgi_python_home': sys.prefix,
        'wsgi_socket_directive': (wsgi_socket_directive_needed and \
                                 'WSGISocketPrefix ' or '#WSGISocketPrefix ') + \
               conf.get('Invenio', 'CFG_PREFIX') + os.sep + 'var' + os.sep + 'run',

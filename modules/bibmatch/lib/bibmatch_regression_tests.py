@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
-##
-## This file is part of Invenio.
-## Copyright (C) 2010, 2011 CERN.
-##
-## Invenio is free software; you can redistribute it and/or
-## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
-## License, or (at your option) any later version.
-##
-## Invenio is distributed in the hope that it will be useful, but
-## WITHOUT ANY WARRANTY; without even the implied warranty of
-## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-## General Public License for more details.
-##
-## You should have received a copy of the GNU General Public License
-## along with Invenio; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+#
+# This file is part of Invenio.
+# Copyright (C) 2010, 2011, 2015 CERN.
+#
+# Invenio is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 2 of the
+# License, or (at your option) any later version.
+#
+# Invenio is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Invenio; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
 
 # pylint: disable=E1102
 
@@ -146,7 +146,7 @@ class BibMatchTest(InvenioTestCase):
     <subfield code="a">ARTICLE</subfield>
   </datafield>
   <datafield tag="856" ind1="4" ind2=" ">
-    <subfield code="u">http://invenio-demo.cern.ch/record/95/files/9809057.pdf</subfield>
+    <subfield code="u">http://demo.invenio-software.org/record/95/files/9809057.pdf</subfield>
   </datafield>
 </record>
 </collection>
@@ -592,7 +592,7 @@ class BibMatchTest(InvenioTestCase):
         """bibmatch - check remote match (Invenio demo site)"""
         records = create_records(self.recxml6)
         [dummy1, matchedrecs, dummy3, dummy4] = match_records(records, \
-                                                              server_url="http://invenio-demo.cern.ch", \
+                                                              server_url="http://demo.invenio-software.org", \
                                                               verbose=0)
         self.assertEqual(1, len(matchedrecs))
 
@@ -665,7 +665,7 @@ class BibMatchTest(InvenioTestCase):
             [dummy1, matchedrecs, dummy2, dummy3] = match_records(records, \
                                                                   qrystrs=[("", "[088__a]")], \
                                                                   collections=["Theses"], \
-                                                                  server_url="https://invenio-demo.cern.ch", \
+                                                                  server_url="https://demo.invenio-software.org", \
                                                                   user="jekyll", \
                                                                   password="j123ekyll",
                                                                   verbose=0)
@@ -674,7 +674,7 @@ class BibMatchTest(InvenioTestCase):
             [nomatchrecs, dummy1, dummy2, dummy3] = match_records(records, \
                                                                   qrystrs=[("", "[088__a]")], \
                                                                   collections=["Theses"], \
-                                                                  server_url="https://invenio-demo.cern.ch", \
+                                                                  server_url="https://demo.invenio-software.org", \
                                                                   user="hyde", \
                                                                   password="h123yde",
                                                                   verbose=0)

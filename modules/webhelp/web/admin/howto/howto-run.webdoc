@@ -1,19 +1,19 @@
-## This file is part of Invenio.
-## Copyright (C) 2007, 2008, 2009, 2010, 2011, 2013, 2014 CERN.
-##
-## Invenio is free software; you can redistribute it and/or
-## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
-## License, or (at your option) any later version.
-##
-## Invenio is distributed in the hope that it will be useful, but
-## WITHOUT ANY WARRANTY; without even the implied warranty of
-## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-## General Public License for more details.
-##
-## You should have received a copy of the GNU General Public License
-## along with Invenio; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+# This file is part of Invenio.
+# Copyright (C) 2007, 2008, 2009, 2010, 2011, 2013, 2014, 2015 CERN.
+#
+# Invenio is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 2 of the
+# License, or (at your option) any later version.
+#
+# Invenio is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Invenio; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
 
 <!-- WebDoc-Page-Title: HOWTO Run Your Invenio Installation -->
 <!-- WebDoc-Page-Navtrail: <a class="navtrail" href="<CFG_SITE_URL>/help/admin<lang:link/>">Admin Area</a> &gt; <a class="navtrail" href="howto">Admin HOWTOs</a> -->
@@ -272,20 +272,6 @@ The rebalancing might be run weekly or even daily.
 <p>The tool <code>inveniogc</code> provides a garbage collector for
 the database, temporary files, and the like.</p>
 
-<p>If you choose to differentiate between guest users
-(see <code>CFG_WEBSESSION_DIFFERENTIATE_BETWEEN_GUESTS</code>
-in <code>invenio.conf</code>), then guest users can create a lot of
-entries in Invenio tables that are related to their web sessions,
-their search history, personal baskets, etc.  This data has to be
-garbage-collected periodically.  You can run this, say every Sunday
-between 01:00 and 05:00, via:
-
-<blockquote>
-<pre>
-$ inveniogc -s 7d -L 'Sunday 01:00-05:00'
-</pre>
-</blockquote>
-</p>
 
 <p>Different temporary log and err files are created
 in <code>/opt/invenio/var/log</code>
