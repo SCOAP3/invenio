@@ -150,7 +150,10 @@ def remove_duplicates(harvested_file_list):
         # build up new xml structure
         newroot = etree.Element('OAI-PMH')
         newListRecords = etree.SubElement(newroot, 'ListRecords')
-
+        for rdate in root.xpath("//*[local-name() = 'respondDate']"):
+            newroot.append(deepcopy(rdate))
+        for rq in root.xpath("//*[local-name() = 'request']"):
+            newroot.append(deepcopy(rq))
         for rec in root.xpath("//*[local-name() = 'record']"):
             tmp = deepcopy(rec)
             for i in tmp.xpath("//*[local-name() = 'identifier']"):
