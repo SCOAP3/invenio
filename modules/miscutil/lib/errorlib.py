@@ -35,7 +35,7 @@ from cStringIO import StringIO
 from invenio.config import CFG_SITE_LANG, CFG_LOGDIR, \
     CFG_WEBALERT_ALERT_ENGINE_EMAIL, CFG_SITE_ADMIN_EMAIL, \
     CFG_SITE_SUPPORT_EMAIL, CFG_SITE_NAME, CFG_SITE_URL, \
-    CFG_SITE_EMERGENCY_EMAIL_ADDRESSES, \
+    CFG_SITE_EMERGENCY_EMAIL_ADDRESSES, CFG_SITE_SUPPORT_EMAIL_FOR_SMS, \
     CFG_SITE_ADMIN_EMAIL_EXCEPTIONS, \
     CFG_ERRORLIB_RESET_EXCEPTION_NOTIFICATION_COUNTER_AFTER, \
     CFG_PROPAGATE_EXCEPTIONS, \
@@ -138,9 +138,14 @@ def register_emergency(msg, recipients=None):
         if "sms" in address_str:
             # Probably an SMS, lets reduce things!
             subject = sms_subject
+            if CFG_SITE_SUPPORT_EMAIL_FOR_SMS:
+                email = CFG_SITE_SUPPORT_EMAIL_FOR_SMS
+            else:
+                email = CFG_SITE_SUPPORT_EMAIL
         else:
             subject = mail_subject
-        send_email(CFG_SITE_SUPPORT_EMAIL, address_str, subject, msg)
+            email = CFG_SITE_SUPPORT_EMAIL
+        send_email(email, address_str, subject, msg)
 
 def get_emergency_recipients(recipient_cfg=CFG_SITE_EMERGENCY_EMAIL_ADDRESSES, now=None):
     """Parse a list of appropriate emergency email recipients from
