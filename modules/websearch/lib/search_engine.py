@@ -5607,7 +5607,8 @@ def perform_request_search(req=None, cc=CFG_SITE_NAME, c=None, p="", f="", rg=No
                limited at 100 results
     """
     if CFG_SCOAP3_API_SERVER:
-        of = 'xm'
+        if of not in ['xm', 'xd', 'recjson']:
+            of = 'xm'
     if CFG_SCOAP3_ONLY_MEMBERS_ACCESS:
         if req:
             uid = getUid(req)
